@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; connect-src 'self' https://api.deepseek.com https://*.deepseek.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.gstatic.com; worker-src 'self' blob:; frame-ancestors 'none';"
+    />
+    <title>DeepSeek 流式对话机器人</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500..900&family=Noto+Sans+SC:wght@400;500;700;900&family=Noto+Serif+SC:wght@500;700;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css" />
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles-desktop.css" media="(min-width: 821px)" />
+    <link rel="stylesheet" href="./styles-mobile.css" media="(max-width: 820px)" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <aside class="sidebar" id="sidebar" aria-label="会话侧边栏">
+        <div class="sidebar__top">
+          <div class="brand">
+            <span class="brand__mark" aria-hidden="true">◆</span>
+            <div>
+              <strong>DeepSeek Chat</strong>
+              <small>Command Atelier</small>
+            </div>
+          </div>
+          <button class="icon-btn" id="collapseSidebarBtn" title="收起侧边栏" aria-label="收起侧边栏">☰</button>
+        </div>
+
+        <button class="primary wide" id="newSessionBtn">＋ 新建会话</button>
+
+        <label class="search-box" for="sessionSearch">
+          <span aria-hidden="true">⌕</span>
+          <input id="sessionSearch" placeholder="搜索会话（Ctrl/⌘ K）" autocomplete="off" />
+        </label>
+
+        <div class="batch-bar">
+          <button class="ghost small" id="batchModeBtn">多选</button>
+          <button class="ghost small hidden" id="selectAllBtn">全选</button>
+          <button class="danger small hidden" id="deleteSelectedBtn">删除</button>
+        </div>
+
+        <nav id="sessionList" class="session-list" aria-label="会话列表"></nav>
+
+        <div class="sidebar__footer">
+          <button class="ghost wide" id="exportAllBtn">导出备份</button>
+          <label class="ghost wide import-label">
+            导入备份
+            <input id="importAllInput" type="file" accept="application/json" />
+          </label>
+        </div>
+      </aside>
+
+      <main class="chat" id="chatMain">
+        <header class="topbar">
+          <div class="topbar__left">
+            <button class="icon-btn mobile-only" id="openSidebarBtn" aria-label="打开侧边栏">☰</button>
+            <div class="conversation-title">
+              <span id="activeTitle">新会话</span>
+              <small id="sessionStats">0 消息 · 0 tokens</small>
+            </div>
+          </div>
+          <div class="topbar__controls">
+            <select id="modelSelect" title="选择模型" aria-label="选择模型">
+              <option value="deepseek-v4-flash">deepseek-v4-flash</option>
+              <option value="deepseek-v4-pro">deepseek-v4-pro</option>
+            </select>
+            <button class="chip persona-chip" id="personaTopBtn" aria-pressed="false">角色/背景</button>
+            <button class="chip" id="thinkingQuickBtn" aria-pressed="false">思考：关</button>
+            <button class="chip" id="jsonQuickBtn" aria-pressed="false">JSON：关</button>
+            <button class="icon-btn" id="themeToggleBtn" title="切换主题" aria-label="切换主题">◐</button>
+            <button class="icon-btn" id="settingsBtn" title="设置" aria-label="打开设置">⚙</button>
+          </div>
+        </header>
+
+        <section class="fim-panel hidden" id="fimPanel" aria-label="FIM 补全面板">
+          <div class="panel-card">
+            <div class="section-title">
+              <div>
+                <strong>Fill-In-the-Middle 补全</strong>
+                <p>仅非思考模式可用；提供前缀和后缀，让模型补全中间内容。</p>
+              </div>
+              <button class="ghost small" id="closeFimBtn">关闭</button>
+            </div>
+            <div class="fim-grid">
+              <label>Prefix<textarea id="fimPrefix" rows="7" placeholder="输入前缀…"></textarea></label>
+              <label>Completion<textarea id="fimResult" rows="7" readonly placeholder="补全结果会显示在这里"></textarea></label>
+              <label>Suffix<textarea id="fimSuffix" rows="7" placeholder="输入后缀…"></textarea></label>
+            </div>
+            <div class="panel-actions">
+              <button class="primary" id="runFimBtn">运行 FIM</button>
+              <button class="ghost" id="copyFimBtn">复制结果</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="messages" id="messages" aria-live="polite" aria-label="消息区域">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-state__orb">✦</div>
+            <h1>流式 DeepSeek 对话机器人</h1>
+            <p>支持思考模式、Tool Calls、JSON Output、Prefix/FIM、Markdown、代码高亮、数学公式和 Mermaid。</p>
+            <div class="starter-grid" id="starterGrid">
+              <button data-starter="帮我用三点总结一下 DeepSeek API 的流式调用流程。">总结流式调用</button>
+              <button data-starter="写一个 Python 快速排序，并解释时间复杂度。">生成代码示例</button>
+              <button data-starter="请用 Mermaid 画一个用户登录流程图。">Mermaid 流程图</button>
+              <button data-starter="以 JSON 输出一个三天学习计划。">JSON 学习计划</button>
+            </div>
+          </div>
+        </section>
+
+        <button class="back-latest hidden" id="backLatestBtn">回到最新 ↓</button>
+
+        <footer class="composer-wrap">
+          <div class="prefix-box hidden" id="prefixBox">
+            <label for="assistantPrefix">助手前缀（Prefix Completion）</label>
+            <textarea id="assistantPrefix" rows="2" placeholder="例如：```python\n"></textarea>
+          </div>
+          <div class="composer" id="composer">
+            <div class="composer__tools">
+              <button class="icon-btn" id="openFimBtn" title="FIM 补全" aria-label="FIM 补全">FIM</button>
+              <button class="icon-btn" id="promptLibraryBtn" title="Prompt 库" aria-label="Prompt 库">⌘</button>
+            </div>
+            <textarea id="messageInput" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行…" autocomplete="off"></textarea>
+            <button class="send-btn" id="sendBtn" disabled>发送</button>
+          </div>
+          <div class="composer-meta">
+            <span id="charCounter">0 字 · 约 0 tokens</span>
+            <span id="hintText">Ctrl/⌘ + . 停止生成 · Ctrl/⌘ + / 查看快捷键</span>
+          </div>
+        </footer>
+      </main>
+
+      <aside class="settings-drawer" id="settingsDrawer" aria-label="设置面板" aria-hidden="true">
+        <div class="drawer-header">
+          <div>
+            <strong>设置</strong>
+            <small id="settingsPageHint">每类设置独立页面</small>
+          </div>
+          <button class="icon-btn" id="closeSettingsBtn" aria-label="关闭设置">×</button>
+        </div>
+
+        <nav class="settings-pages-nav" id="settingsPagesNav" aria-label="设置分类">
+          <button data-settings-page="api">API</button>
+          <button data-settings-page="model">模型</button>
+          <button data-settings-page="output">思考/输出</button>
+          <button data-settings-page="prompt">System Prompt</button>
+          <button data-settings-page="preset">破限/预设</button>
+          <button data-settings-page="character">角色/背景</button>
+          <button data-settings-page="worldbook">世界书</button>
+          <button data-settings-page="tools">工具</button>
+          <button data-settings-page="ui">界面</button>
+          <button data-settings-page="data">数据</button>
+        </nav>
+
+        <div class="settings-scroll">
+          <details open data-settings-page="api">
+            <summary>API 配置</summary>
+            <label>API Key<input id="apiKeyInput" type="password" placeholder="sk-…" autocomplete="off" /></label>
+            <label>Base URL<input id="baseUrlInput" type="url" placeholder="https://api.deepseek.com" /></label>
+            <label>Beta Base URL<input id="betaBaseUrlInput" type="url" placeholder="https://api.deepseek.com/beta" /></label>
+            <label class="toggle-row"><input id="useProxyInput" type="checkbox" /> 使用本地代理（推荐）</label>
+            <p class="muted">本地代理可避免浏览器 CORS 限制；API Key 仅保存于本机浏览器。</p>
+          </details>
+
+          <details open data-settings-page="model">
+            <summary>模型与生成参数</summary>
+            <label>模型<select id="modelSettingSelect"><option value="deepseek-v4-flash">deepseek-v4-flash</option><option value="deepseek-v4-pro">deepseek-v4-pro</option></select></label>
+            <div class="model-note" id="modelNote"></div>
+            <label>Temperature <span id="temperatureValue"></span><input id="temperatureInput" type="range" min="0" max="2" step="0.1" /></label>
+            <label>Top-p <span id="topPValue"></span><input id="topPInput" type="range" min="0" max="1" step="0.05" /></label>
+            <label>Max tokens<input id="maxTokensInput" type="number" min="1" max="32768" step="128" /></label>
+            <label>目标正文字数
+              <select id="responseLengthInput">
+                <option value="auto">自动</option>
+                <option value="short">短：约 100-300 字</option>
+                <option value="medium">中：约 500-900 字</option>
+                <option value="long">长：约 1200-2000 字</option>
+                <option value="very_long">超长：约 2500-4000 字</option>
+                <option value="custom">自定义</option>
+              </select>
+            </label>
+            <label id="customLengthLabel" class="hidden">自定义长度要求<input id="customLengthInput" placeholder="例如：正文不少于1800字，分8-12段，对话占一半以上" /></label>
+            <label>Presence penalty<input id="presencePenaltyInput" type="number" min="-2" max="2" step="0.1" /></label>
+            <label>Frequency penalty<input id="frequencyPenaltyInput" type="number" min="-2" max="2" step="0.1" /></label>
+            <label>Stop（逗号分隔，最多16个）<input id="stopInput" placeholder="###, END" /></label>
+          </details>
+
+          <details open data-settings-page="output">
+            <summary>思考与结构化输出</summary>
+            <label class="toggle-row"><input id="thinkingInput" type="checkbox" /> 启用 Thinking Mode</label>
+            <label>Reasoning effort<select id="reasoningEffortInput"><option value="high">high（默认）</option><option value="max">max</option></select></label>
+            <label class="toggle-row"><input id="jsonModeInput" type="checkbox" /> JSON Output 模式</label>
+            <label class="toggle-row"><input id="prefixEnabledInput" type="checkbox" /> Chat Prefix Completion（Beta）</label>
+            <label class="toggle-row"><input id="fimEnabledInput" type="checkbox" /> 显示 FIM 面板（Beta）</label>
+            <div class="formatting-console">
+              <div class="formatting-console__header">
+                <div>
+                  <strong>消息渲染管线</strong>
+                  <small>原文存储，显示侧与 Prompt 侧独立变换</small>
+                </div>
+              </div>
+              <div class="settings-grid-2">
+                <label>聊天显示模式
+                  <select id="chatDisplayModeInput">
+                    <option value="default">Default · 经典列表</option>
+                    <option value="bubbles">Bubbles · 即时气泡</option>
+                    <option value="document">Document · 文档流</option>
+                  </select>
+                </label>
+                <label>当前脚本宏替换模式
+                  <select id="regexSubstituteInput">
+                    <option value="none">none · 正则内不替换宏</option>
+                    <option value="raw">raw · 宏原样进入正则</option>
+                    <option value="escaped">escaped · 宏值按正则转义</option>
+                  </select>
+                </label>
+              </div>
+              <label class="toggle-row"><input id="autoFixMarkdownInput" type="checkbox" /> Auto-fix Markdown：流式/未闭合标记自动补全</label>
+              <label class="toggle-row"><input id="showTagsInput" type="checkbox" /> Show tags in responses：允许安全 HTML / XML 标签渲染</label>
+              <label class="toggle-row"><input id="showReasoningBlocksInput" type="checkbox" /> 显示 Reasoning 折叠块（正文仍独立存储）</label>
+              <label class="toggle-row"><input id="allowScopedRegexInput" type="checkbox" /> 允许角色卡 Scoped Regex（仅当前角色卡扩展脚本）</label>
+
+              <div class="formatting-section">
+                <div class="section-title compact">
+                  <div>
+                    <strong>Reasoning Templates</strong>
+                    <p>先于 Markdown 提取 <code>&lt;think&gt;</code> 等思维块，保存到 message.extra.reasoning。</p>
+                  </div>
+                </div>
+                <label>模板<select id="reasoningTemplateSelect"></select></label>
+                <label class="toggle-row"><input id="reasoningTemplateEnabledInput" type="checkbox" /> 启用该模板</label>
+                <label>名称<input id="reasoningTemplateNameInput" placeholder="DeepSeek / Claude / 自定义" /></label>
+                <label>Open Regex<input id="reasoningTemplateOpenInput" spellcheck="false" placeholder="例如：<think\\b[^>]*>" /></label>
+                <label>Close Regex<input id="reasoningTemplateCloseInput" spellcheck="false" placeholder="例如：</think>" /></label>
+                <div class="panel-actions wrap">
+                  <button class="ghost small" id="newReasoningTemplateBtn">新建模板</button>
+                  <button class="ghost small" id="saveReasoningTemplateBtn">保存模板</button>
+                  <button class="danger small" id="deleteReasoningTemplateBtn">删除模板</button>
+                </div>
+              </div>
+
+              <div class="formatting-section">
+                <div class="section-title compact">
+                  <div>
+                    <strong>Regex Scripts</strong>
+                    <p>支持 Markdown Only / Prompt Only；两者都不勾选时会在新消息落库前持久化替换。</p>
+                  </div>
+                </div>
+                <label>脚本<select id="regexScriptSelect"></select></label>
+                <label>脚本名称<input id="regexScriptNameInput" placeholder="隐藏状态栏、裁剪旧 XML、对白高亮…" /></label>
+                <label>Find Regex<textarea id="regexFindInput" rows="3" spellcheck="false" placeholder="/<status>[\\s\\S]*?<\\/status>/gi"></textarea></label>
+                <label>Replace String<textarea id="regexReplaceInput" rows="3" spellcheck="false" placeholder="支持 $1、$2 和 {{char}} / {{user}}"></textarea></label>
+                <label>Trim Strings（每行一个，替换前移除）<textarea id="regexTrimInput" rows="3" spellcheck="false"></textarea></label>
+                <div class="regex-flags-grid">
+                  <label class="toggle-row"><input id="regexPlacementUserInput" type="checkbox" /> User Input</label>
+                  <label class="toggle-row"><input id="regexPlacementAiInput" type="checkbox" /> AI Output</label>
+                  <label class="toggle-row"><input id="regexPlacementWorldInput" type="checkbox" /> World Info</label>
+                  <label class="toggle-row"><input id="regexPlacementReasoningInput" type="checkbox" /> Reasoning</label>
+                  <label class="toggle-row"><input id="regexMarkdownOnlyInput" type="checkbox" /> Markdown Only / 仅显示</label>
+                  <label class="toggle-row"><input id="regexPromptOnlyInput" type="checkbox" /> Prompt Only / 仅发送</label>
+                  <label class="toggle-row"><input id="regexDisabledInput" type="checkbox" /> 禁用</label>
+                  <label class="toggle-row"><input id="regexRunOnEditInput" type="checkbox" /> 编辑消息时也执行</label>
+                </div>
+                <div class="settings-grid-2">
+                  <label>Min Depth<input id="regexMinDepthInput" type="number" min="0" step="1" placeholder="空 = 不限制" /></label>
+                  <label>Max Depth<input id="regexMaxDepthInput" type="number" min="0" step="1" placeholder="空 = 不限制" /></label>
+                </div>
+                <div class="panel-actions wrap">
+                  <button class="ghost small" id="newRegexScriptBtn">新建脚本</button>
+                  <button class="ghost small" id="copyRegexScriptBtn">复制脚本</button>
+                  <button class="ghost small" id="saveRegexScriptBtn">保存脚本</button>
+                  <button class="ghost small" id="moveRegexUpBtn">上移</button>
+                  <button class="ghost small" id="moveRegexDownBtn">下移</button>
+                  <button class="danger small" id="deleteRegexScriptBtn">删除脚本</button>
+                  <button class="ghost small" id="exportRegexScriptsBtn">导出 JSON</button>
+                  <label class="ghost small import-label">导入 Regex JSON<input id="importRegexScriptsInput" type="file" accept="application/json,.json" /></label>
+                </div>
+                <div class="settings-grid-2">
+                  <label>测试 Placement
+                    <select id="regexTestPlacementInput">
+                      <option value="AI_OUTPUT">AI_OUTPUT</option>
+                      <option value="USER_INPUT">USER_INPUT</option>
+                      <option value="WORLD_INFO">WORLD_INFO</option>
+                      <option value="REASONING">REASONING</option>
+                    </select>
+                  </label>
+                  <label>测试 Mode
+                    <select id="regexTestModeInput">
+                      <option value="display">显示侧</option>
+                      <option value="prompt">Prompt 侧</option>
+                      <option value="persistent">持久化落库</option>
+                    </select>
+                  </label>
+                </div>
+                <label>测试输入<textarea id="regexTestInput" rows="4" spellcheck="false" placeholder="输入一段文本，实时预览替换结果"></textarea></label>
+                <label>测试结果<textarea id="regexTestResult" rows="4" readonly spellcheck="false"></textarea></label>
+              </div>
+            </div>
+          </details>
+
+          <details open data-settings-page="prompt">
+            <summary>System Prompt</summary>
+            <label>当前会话 System Prompt<textarea id="systemPromptInput" rows="6"></textarea></label>
+            <div class="template-row" id="promptTemplates"></div>
+            <div class="panel-actions">
+              <button class="ghost small" id="savePromptBtn">保存到 Prompt 库</button>
+              <button class="ghost small" id="exportPromptBtn">导出 Prompt</button>
+              <label class="ghost small import-label">导入 JSON 设为 System Prompt<input id="importPromptInput" type="file" accept="application/json,.json" /></label>
+            </div>
+            <p class="muted">这里用于维护基础 System Prompt。下载的破限词/酒馆预设建议到“破限/预设”页导入，避免覆盖基础 System Prompt；若导入的是 Prompt 模板数组，则加入 Prompt 库。</p>
+            <div id="promptLibrary" class="prompt-library"></div>
+          </details>
+
+          <details open data-settings-page="preset">
+            <summary>破限 / 外部预设</summary>
+            <div class="model-note">
+              <strong>破限库</strong><br />
+              导入或编写一次后可长期保存；新建对话会自动套用默认破限，也可在当前对话中切换。
+            </div>
+            <label>破限库搜索<input id="jailbreakLibrarySearch" placeholder="按名称 / 标签 / 描述搜索" /></label>
+            <label>选择破限预设<select id="jailbreakLibrarySelect"></select></label>
+            <label>预设名称<input id="jailbreakPresetNameInput" placeholder="例如：Claude RP 通用破限" /></label>
+            <label>预设说明<input id="jailbreakPresetDescriptionInput" placeholder="用途说明，可选" /></label>
+            <label>标签（逗号分隔）<input id="jailbreakPresetTagsInput" placeholder="rp, 长回复, 状态栏" /></label>
+            <label>Post-history Instructions / UJB<textarea id="jailbreakPostHistoryInput" rows="4" spellcheck="false" placeholder="可选：插入在历史消息之后的最终破限指令"></textarea></label>
+            <div class="panel-actions wrap">
+              <button class="ghost small" id="applyJailbreakPresetBtn">应用到当前对话</button>
+              <button class="ghost small" id="saveJailbreakPresetBtn">保存/更新到破限库</button>
+              <button class="ghost small" id="newJailbreakPresetBtn">新建空白</button>
+              <button class="ghost small" id="copyJailbreakPresetBtn">复制</button>
+              <button class="ghost small" id="setDefaultJailbreakBtn">设为默认</button>
+              <button class="danger small" id="deleteJailbreakPresetBtn">删除预设</button>
+              <button class="ghost small" id="exportJailbreakPresetBtn">导出 JSON</button>
+              <label class="ghost small import-label">导入破限库 JSON<input id="jailbreakLibraryImportInput" type="file" accept="application/json,.json" /></label>
+            </div>
+            <label class="toggle-row"><input id="jailbreakEnabledInput" type="checkbox" /> 启用外部预设</label>
+            <div class="panel-actions wrap">
+              <label class="ghost small import-label">解析导入破限/预设<input id="jailbreakImportInput" type="file" accept="application/json,.json,.txt,.md" /></label>
+              <button class="danger small" id="clearJailbreakBtn">清除预设</button>
+            </div>
+            <div id="jailbreakSummary" class="model-note">尚未导入外部预设。</div>
+            <label>预设内容预览/编辑<textarea id="jailbreakPromptInput" rows="14" spellcheck="false" placeholder="导入后可在这里微调。此内容独立保存，不会覆盖 System Prompt。"></textarea></label>
+            <p class="muted">此模块与 System Prompt 分开管理；导入 SillyTavern 预设 JSON 时会像酒馆一样按 prompt_order、role、system_prompt 和 marker 组装提示词，展开 setvar/addvar/getvar，并只丢弃扩展配置等不会发给模型的字段；TXT/MD 会按文本导入。</p>
+          </details>
+
+          <details open id="characterBackgroundDetails" data-settings-page="character">
+            <summary>角色卡与背景设定</summary>
+            <div class="model-note">
+              <strong>角色卡库</strong><br />
+              角色卡导入后会长期保留；开始新对话时会复制角色快照，后续修改库内角色不会污染已有对话。
+            </div>
+            <label>角色库搜索<input id="characterLibrarySearch" placeholder="按角色名 / 标签 / 创作者搜索" /></label>
+            <label>选择角色卡<select id="characterLibrarySelect"></select></label>
+            <div class="panel-actions wrap">
+              <button class="ghost small" id="applyCharacterCardBtn">应用角色快照</button>
+              <button class="ghost small" id="saveCharacterCardBtn">保存/更新到角色库</button>
+              <button class="ghost small" id="syncCharacterCardBtn">同步库内最新版到当前对话</button>
+              <button class="danger small" id="deleteCharacterCardBtn">删除角色卡</button>
+              <button class="ghost small" id="exportCharacterCardBtn">导出 JSON</button>
+            </div>
+            <label>我的名字 / 称呼<input id="userNameInput" placeholder="例如：林舟、旅人、船长…" /></label>
+            <label>我的身份描述（可选，独立上下文）<textarea id="userPersonaInput" rows="4" placeholder="例如：我是刚到桐镇的外乡人，性格谨慎，正在寻找失踪的旧友…"></textarea></label>
+            <label class="toggle-row"><input id="rpModeInput" type="checkbox" /> 启用互动角色扮演模式</label>
+            <label>叙事视角
+              <select id="rpPerspectiveInput">
+                <option value="second">第二人称（你）</option>
+                <option value="third">第三人称</option>
+                <option value="first">第一人称</option>
+              </select>
+            </label>
+            <label class="toggle-row"><input id="rpSuggestionsInput" type="checkbox" /> 每轮生成可点击行动选项</label>
+            <label>剧情记忆 / 作者注释（独立上下文）<textarea id="rpMemoryInput" rows="5" placeholder="例如：长期目标、已发生的重要事件、禁止遗忘的人物关系、世界规则等…"></textarea></label>
+            <label class="toggle-row"><input id="backgroundEnabledInput" type="checkbox" /> 启用背景设定</label>
+            <label>预设背景（独立上下文，不写入 System Prompt）<textarea id="backgroundInput" rows="6" placeholder="例如：世界观、地点、时间线、关系背景、长期剧情前提等…"></textarea></label>
+            <label class="toggle-row"><input id="characterEnabledInput" type="checkbox" /> 启用角色卡</label>
+            <div class="panel-actions wrap">
+              <label class="ghost small import-label">批量导入角色卡 JSON/PNG/CHARX<input id="characterCardInput" type="file" multiple accept="application/json,.json,image/png,.png,.charx,application/zip" /></label>
+              <button class="primary small" id="startCharacterChatBtn">开始角色对话</button>
+              <button class="ghost small" id="insertGreetingBtn">插入开场白</button>
+              <button class="danger small" id="clearCharacterBtn">清除角色卡</button>
+            </div>
+            <div id="characterCardSummary" class="model-note">尚未导入角色卡。</div>
+            <label>开场白选择<select id="characterGreetingSelect"></select></label>
+            <label>角色名<input id="characterNameInput" placeholder="角色名" /></label>
+            <label>角色描述 description<textarea id="characterDescriptionInput" rows="5" spellcheck="false"></textarea></label>
+            <label>性格 personality<textarea id="characterPersonalityInput" rows="3" spellcheck="false"></textarea></label>
+            <label>场景 scenario<textarea id="characterScenarioInput" rows="4" spellcheck="false"></textarea></label>
+            <label>主开场白 first_mes<textarea id="characterFirstMesInput" rows="4" spellcheck="false"></textarea></label>
+            <label>示例对话 mes_example<textarea id="characterMesExampleInput" rows="6" spellcheck="false"></textarea></label>
+            <label>角色 System Prompt（默认覆盖全局 System Prompt）<textarea id="characterSystemPromptInput" rows="4" spellcheck="false"></textarea></label>
+            <label>Post-history Instructions / UJB<textarea id="characterPostHistoryInput" rows="4" spellcheck="false"></textarea></label>
+            <label>创作者备注（不进入 Prompt）<textarea id="characterCreatorNotesInput" rows="4" spellcheck="false"></textarea></label>
+            <label>Prompt 预览（只展示会进入上下文的结构化字段，不包含原始 JSON）<textarea id="characterCardPreview" rows="8" readonly spellcheck="false"></textarea></label>
+            <p class="muted">角色卡导入后会结构化保存；对话时只按需拼接 description/personality/scenario/示例等字段，不再把整张原始 JSON 反复塞进 prompt。creator_notes、tags、extensions 仅用于前端查看/兼容。</p>
+          </details>
+
+          <details open data-settings-page="worldbook">
+            <summary>世界书</summary>
+            <div class="model-note">
+              <strong>世界书库</strong><br />
+              可同时激活多本世界书。角色绑定世界书会自动参与匹配，额外全局世界书可手动勾选。
+            </div>
+            <label>世界书库搜索<input id="worldBookLibrarySearch" placeholder="按名称 / 标签 / 来源搜索" /></label>
+            <label>管理世界书<select id="worldBookLibrarySelect"></select></label>
+            <label>当前对话激活的额外世界书<select id="activeWorldBookSelect" multiple size="5"></select></label>
+            <div class="panel-actions wrap">
+              <button class="ghost small" id="applyWorldBookFromLibraryBtn">应用选中世界书</button>
+              <button class="ghost small" id="saveWorldBookBtn">保存/更新到世界书库</button>
+              <button class="ghost small" id="newWorldBookBtn">新建空白世界书</button>
+              <button class="danger small" id="deleteWorldBookBtn">删除世界书</button>
+              <button class="ghost small" id="exportWorldBookBtn">导出 JSON</button>
+            </div>
+            <label class="toggle-row"><input id="worldBookEnabledInput" type="checkbox" /> 启用世界书</label>
+            <div class="panel-actions wrap">
+              <label class="ghost small import-label">导入世界书 JSON<input id="worldBookImportInput" type="file" accept="application/json,.json" /></label>
+              <button class="danger small" id="clearWorldBookBtn">清除世界书</button>
+            </div>
+            <label>扫描最近消息数<input id="worldBookScanDepthInput" type="number" min="1" max="40" step="1" /></label>
+            <label>最多注入条目数<input id="worldBookMaxEntriesInput" type="number" min="1" max="50" step="1" /></label>
+            <label>世界书 token 预算<input id="worldBookTokenBudgetInput" type="number" min="64" max="100000" step="64" /></label>
+            <label class="toggle-row"><input id="worldBookRecursiveInput" type="checkbox" /> 启用递归扫描</label>
+            <div id="worldBookSummary" class="model-note">尚未导入世界书。</div>
+            <label>世界书条目 JSON 编辑（可新增/删除/修改 entries 后应用）<textarea id="worldBookEditor" rows="10" spellcheck="false"></textarea></label>
+            <button class="ghost small" id="applyWorldBookEditBtn">应用世界书编辑</button>
+            <label>当前触发条目预览<textarea id="worldBookActivePreview" rows="12" readonly spellcheck="false"></textarea></label>
+            <label>测试模式：输入文本预览触发条目<textarea id="worldBookTestInput" rows="4" spellcheck="false" placeholder="输入关键词或一段最近对话…"></textarea></label>
+            <label>测试结果<textarea id="worldBookTestResult" rows="8" readonly spellcheck="false"></textarea></label>
+            <p class="muted">世界书与角色卡不同：它按关键词从最近对话中触发条目，并作为独立上下文注入，不会显示在聊天记录里。</p>
+          </details>
+
+          <details open data-settings-page="tools">
+            <summary>Tool Calls</summary>
+            <label class="toggle-row"><input id="toolsEnabledInput" type="checkbox" /> 启用工具调用</label>
+            <p class="muted">内置 calculator / get_current_time / weather / web_search。自定义工具定义需符合 OpenAI tools JSON 数组。</p>
+            <label>Tools JSON<textarea id="toolsJsonInput" rows="12" spellcheck="false"></textarea></label>
+            <button class="ghost small" id="formatToolsBtn">格式化并校验</button>
+          </details>
+
+          <details open data-settings-page="ui">
+            <summary>界面设置</summary>
+            <label>主题<select id="themeInput"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
+            <label>字体大小 <span id="fontScaleValue"></span><input id="fontScaleInput" type="range" min="0.88" max="1.22" step="0.02" /></label>
+            <label class="toggle-row"><input id="timestampsInput" type="checkbox" /> 显示时间戳</label>
+            <label class="toggle-row"><input id="lineNumbersInput" type="checkbox" /> 代码块显示行号</label>
+          </details>
+
+          <details open data-settings-page="data">
+            <summary>上下文与数据</summary>
+            <div id="tokenPanel" class="token-panel"></div>
+            <div class="panel-actions wrap">
+              <button class="ghost small" id="syncServerBtn">从共享文件拉取</button>
+              <button class="ghost small" id="pushServerBtn">上传本机状态</button>
+              <button class="ghost small" id="clearHistoryBtn">清空当前会话消息</button>
+              <button class="ghost small" id="truncateHistoryBtn">保留最近 6 轮</button>
+              <button class="ghost small" id="exportJsonBtn">导出当前 JSON</button>
+              <button class="ghost small" id="exportMarkdownBtn">导出 Markdown</button>
+              <button class="ghost small" id="exportTxtBtn">导出 TXT</button>
+            </div>
+          </details>
+        </div>
+      </aside>
+    </div>
+
+    <div class="modal-backdrop hidden" id="modalBackdrop"></div>
+    <dialog id="shortcutDialog" class="dialog">
+      <form method="dialog">
+        <div class="dialog__header">
+          <strong>快捷键</strong>
+          <button class="icon-btn" value="cancel">×</button>
+        </div>
+        <table class="shortcut-table">
+          <tbody>
+            <tr><td>Enter</td><td>发送消息</td></tr>
+            <tr><td>Shift + Enter</td><td>输入换行</td></tr>
+            <tr><td>Ctrl/⌘ + N</td><td>新建会话</td></tr>
+            <tr><td>Ctrl/⌘ + Shift + S</td><td>打开/关闭侧边栏</td></tr>
+            <tr><td>Ctrl/⌘ + K</td><td>搜索会话</td></tr>
+            <tr><td>Ctrl/⌘ + .</td><td>停止生成</td></tr>
+            <tr><td>Ctrl/⌘ + Shift + C</td><td>复制最后一条回复</td></tr>
+            <tr><td>Ctrl/⌘ + /</td><td>打开快捷键帮助</td></tr>
+            <tr><td>Escape</td><td>关闭弹窗/设置面板</td></tr>
+          </tbody>
+        </table>
+      </form>
+    </dialog>
+
+    <div id="toastStack" class="toast-stack" aria-live="assertive"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/showdown@2.1.0/dist/showdown.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/contrib/auto-render.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js" defer></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
