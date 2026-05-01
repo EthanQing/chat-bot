@@ -73,6 +73,9 @@ class ChatBotHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/state":
             self._handle_get_state()
             return
+        if parsed.path == "/api/state/meta":
+            self._handle_get_state_meta()
+            return
         if parsed.path == "/api/config":
             self._send_json({
                 "serverApiKeyConfigured": bool(SERVER_API_KEY),
@@ -115,6 +118,13 @@ class ChatBotHandler(SimpleHTTPRequestHandler):
             self._send_json(payload)
         except Exception as exc:  # pragma: no cover - local safety net
             self._send_json({"error": f"Failed to read state: {exc}"}, 500)
+
+    def _handle_get_state_meta(self) -> None:
+        try:
+            payload = read_state_metadata()
+            self._send_json(payload)
+        except Exception as exc:  # pragma: no cover - local safety net
+            self._send_json({"error": f"Failed to read state metadata: {exc}"}, 500)
 
     def _handle_save_state(self) -> None:
         try:
@@ -282,6 +292,23 @@ def read_state_file() -> dict:
             "updatedAt": payload.get("updatedAt"),
             "revision": int(payload.get("revision") or 0),
             "data": payload.get("data"),
+        }
+
+
+def read_state_metadata() -> dict:
+    with STATE_LOCK:
+        if not STATE_FILE.exists():
+            return {"exists": False, "updatedAt": None, "revision": 0, "bytes": 0}
+        size = STATE_FILE.stat().st_size
+        with STATE_FILE.open("r", encoding="utf-8") as file:
+            payload = json.load(file)
+        if not isinstance(payload, dict) or "data" not in payload:
+            return {"exists": True, "updatedAt": None, "revision": 0, "bytes": size}
+        return {
+            "exists": True,
+            "updatedAt": payload.get("updatedAt"),
+            "revision": int(payload.get("revision") or 0),
+            "bytes": size,
         }
 
 

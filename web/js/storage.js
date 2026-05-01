@@ -11,32 +11,43 @@ let lastServerRevision = null;
 
 export async function loadPersistedState(legacyStorageKey) {
   const local = await loadLocalPersistedState(legacyStorageKey);
-  const server = await loadServerState().catch(() => null);
-  if (server?.exists) {
-    if (local.data && shouldPreferLocalOverServer(local.data, server.data)) {
-      const saved = await saveServerState(local.data).catch(() => null);
-      if (saved?.updatedAt) lastServerUpdatedAt = saved.updatedAt;
-      if (Number.isFinite(saved?.revision)) lastServerRevision = saved.revision;
-      return { data: local.data, backend: 'server-migrated-from-local' };
-    }
-    if (server.data) {
-      lastServerUpdatedAt = server.updatedAt || null;
-      lastServerRevision = Number.isFinite(server.revision) ? server.revision : 0;
-      await saveLocalPersistedState(legacyStorageKey, server.data, 'server-file').catch(() => null);
-      return { data: server.data, backend: 'server-file', updatedAt: server.updatedAt || null, revision: lastServerRevision };
-    }
-  }
+  const serverMeta = await loadServerStateMeta().catch(() => null);
+
   if (local.data) {
+    lastServerUpdatedAt = local.serverUpdatedAt || null;
+    lastServerRevision = Number.isFinite(local.serverRevision) ? local.serverRevision : null;
+
+    if (serverMeta?.exists) {
+      return {
+        data: local.data,
+        backend: `${local.backend}-local-first`,
+        updatedAt: lastServerUpdatedAt,
+        revision: lastServerRevision,
+        serverMayHaveUpdates: true,
+      };
+    }
+
     const saved = await saveServerState(local.data).catch(() => null);
     if (saved?.ok) {
       lastServerUpdatedAt = saved.updatedAt || null;
       lastServerRevision = Number.isFinite(saved.revision) ? saved.revision : null;
-      await saveLocalPersistedState(legacyStorageKey, local.data, 'server-file').catch(() => null);
+      await saveLocalPersistedState(legacyStorageKey, local.data, 'server-file', saved).catch(() => null);
       return { data: local.data, backend: 'server-migrated-from-local', updatedAt: saved.updatedAt || null, revision: lastServerRevision };
     }
     return local;
   }
-  return { data: null, backend: server ? 'server-file' : local.backend };
+
+  const server = serverMeta?.exists ? await loadServerState().catch(() => null) : null;
+  if (server?.exists) {
+    if (server.data) {
+      lastServerUpdatedAt = server.updatedAt || null;
+      lastServerRevision = Number.isFinite(server.revision) ? server.revision : 0;
+      await saveLocalPersistedState(legacyStorageKey, server.data, 'server-file', server).catch(() => null);
+      return { data: server.data, backend: 'server-file', updatedAt: server.updatedAt || null, revision: lastServerRevision };
+    }
+    return { data: null, backend: 'server-file' };
+  }
+  return { data: null, backend: serverMeta ? 'server-file' : local.backend };
 }
 
 export async function savePersistedState(legacyStorageKey, data, { force = false } = {}) {
@@ -47,10 +58,24 @@ export async function savePersistedState(legacyStorageKey, data, { force = false
   if (saved?.ok) {
     lastServerUpdatedAt = saved.updatedAt || null;
     lastServerRevision = Number.isFinite(saved.revision) ? saved.revision : lastServerRevision;
-    await saveLocalPersistedState(legacyStorageKey, data, 'server-file').catch(() => null);
+    await saveLocalPersistedState(legacyStorageKey, data, 'server-file', saved).catch(() => null);
     return 'server-file';
   }
   return saveLocalPersistedState(legacyStorageKey, data);
+}
+
+export async function peekServerStateMeta() {
+  const meta = await loadServerStateMeta();
+  if (meta?.exists) {
+    return {
+      exists: true,
+      updatedAt: meta.updatedAt || null,
+      revision: Number.isFinite(meta.revision) ? meta.revision : 0,
+      bytes: Number.isFinite(meta.bytes) ? meta.bytes : 0,
+      backend: 'server-file',
+    };
+  }
+  return { exists: false, updatedAt: meta?.updatedAt || null, revision: 0, bytes: 0, backend: 'server-file' };
 }
 
 export async function peekServerPersistedState() {
@@ -79,7 +104,14 @@ async function loadLocalPersistedState(legacyStorageKey) {
   const db = await openDatabase().catch(() => null);
   if (db) {
     const idbData = await idbGet(db, APP_STATE_KEY).catch(() => null);
-    if (idbData?.data) return { data: idbData.data, backend: 'indexeddb' };
+    if (idbData?.data) {
+      return {
+        data: idbData.data,
+        backend: 'indexeddb',
+        serverUpdatedAt: idbData.serverUpdatedAt || null,
+        serverRevision: Number.isFinite(idbData.serverRevision) ? idbData.serverRevision : null,
+      };
+    }
   }
 
   const legacyData = loadLegacyLocalStorage(legacyStorageKey);
@@ -92,17 +124,22 @@ async function loadLocalPersistedState(legacyStorageKey) {
   return { data: null, backend: db ? 'indexeddb' : 'memory' };
 }
 
-async function saveLocalPersistedState(legacyStorageKey, data, backendLabel = null) {
-  const payload = { data, updatedAt: new Date().toISOString() };
+async function saveLocalPersistedState(legacyStorageKey, data, backendLabel = null, serverMeta = null) {
+  const payload = {
+    data,
+    updatedAt: new Date().toISOString(),
+    serverUpdatedAt: serverMeta?.updatedAt || null,
+    serverRevision: Number.isFinite(serverMeta?.revision) ? serverMeta.revision : null,
+  };
   const db = await openDatabase().catch(() => null);
   if (db) {
     await idbSet(db, APP_STATE_KEY, payload);
-    writeLocalStorageShadow(legacyStorageKey, data, backendLabel || 'indexeddb');
+    writeLocalStorageShadow(legacyStorageKey, data, backendLabel || 'indexeddb', serverMeta);
     return backendLabel || 'indexeddb';
   }
 
   localStorage.setItem(legacyStorageKey, JSON.stringify(data));
-  writeStorageMeta(legacyStorageKey, backendLabel || 'localStorage');
+  writeStorageMeta(legacyStorageKey, backendLabel || 'localStorage', undefined, serverMeta);
   return backendLabel || 'localStorage';
 }
 
@@ -150,28 +187,41 @@ function idbSet(db, key, value) {
   });
 }
 
-function writeLocalStorageShadow(legacyStorageKey, data, backend) {
+function writeLocalStorageShadow(legacyStorageKey, data, backend, serverMeta = null) {
   try {
     const json = JSON.stringify(data);
     if (json.length <= LOCAL_STORAGE_SOFT_LIMIT) {
       localStorage.setItem(legacyStorageKey, json);
     }
-    writeStorageMeta(legacyStorageKey, backend, json.length);
+    writeStorageMeta(legacyStorageKey, backend, json.length, serverMeta);
   } catch (_) {
-    writeStorageMeta(legacyStorageKey, backend);
+    writeStorageMeta(legacyStorageKey, backend, undefined, serverMeta);
   }
 }
 
-function writeStorageMeta(legacyStorageKey, backend, size = undefined) {
+function writeStorageMeta(legacyStorageKey, backend, size = undefined, serverMeta = null) {
   try {
     localStorage.setItem(`${legacyStorageKey}${META_SUFFIX}`, JSON.stringify({
       backend,
       size,
+      serverUpdatedAt: serverMeta?.updatedAt || null,
+      serverRevision: Number.isFinite(serverMeta?.revision) ? serverMeta.revision : null,
       updatedAt: new Date().toISOString(),
     }));
   } catch (_) {
     // Ignore metadata failures; IndexedDB remains the source of truth.
   }
+}
+
+async function loadServerStateMeta() {
+  const response = await fetch('/api/state/meta', {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    cache: 'no-store',
+    credentials: 'same-origin',
+  });
+  if (!response.ok) throw new Error(`Server state metadata load failed: HTTP ${response.status}`);
+  return response.json();
 }
 
 async function loadServerState() {

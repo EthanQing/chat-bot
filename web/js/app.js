@@ -57,6 +57,7 @@ import {
 import {
   loadPersistedState,
   savePersistedState,
+  peekServerStateMeta,
   peekServerPersistedState,
   getLastServerUpdatedAt,
   markServerStateApplied,
@@ -169,6 +170,7 @@ import {
     renderAll();
     autoResizeInput();
     startSharedStateSync();
+    setTimeout(() => syncFromServerIfChanged({ reason: 'startup' }), 50);
   }
 
   function bindElements() {
@@ -795,6 +797,11 @@ import {
     try {
       const before = getLastServerUpdatedAt();
       const beforeRevision = getLastServerRevision();
+      if (!force) {
+        const remoteMeta = await peekServerStateMeta();
+        if (!remoteMeta?.exists) return false;
+        if (!isRemoteNewer(remoteMeta.updatedAt, before, remoteMeta.revision, beforeRevision)) return false;
+      }
       const remote = await peekServerPersistedState();
       if (!remote?.data) return false;
       if (!force && !isRemoteNewer(remote.updatedAt, before, remote.revision, beforeRevision)) return false;
