@@ -9,6 +9,8 @@ wheels/
 # Virtual environments
 .venv
 
+data/
+
 # Local environment secrets
 .env
 *.env
