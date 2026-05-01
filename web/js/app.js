@@ -124,6 +124,7 @@ import {
   let saveConflictDeferred = false;
   let saveInFlight = false;
   let stateChangeSeq = 0;
+  let serverApiKeyConfigured = false;
 
   const ACTIVE_SESSION_STORAGE_KEY = `${STORAGE_KEY}.activeSessionId`;
 
@@ -139,8 +140,10 @@ import {
   async function init() {
     bindElements();
     configureLibraries();
+    await loadServerRuntimeConfig();
     await loadState();
     state.settings = normalizeAppSettings(state.settings);
+    applyServerApiKeyMode();
     ensureSession();
     lastPersistedSnapshot = buildPersistedStateSnapshot();
     if (hasUnsavedChanges) persistSoon();
@@ -228,6 +231,31 @@ import {
     }
   }
 
+  async function loadServerRuntimeConfig() {
+    try {
+      const response = await fetch('/api/config', { cache: 'no-store' });
+      if (!response.ok) return;
+      const config = await response.json();
+      serverApiKeyConfigured = Boolean(config?.serverApiKeyConfigured);
+    } catch (_) {
+      serverApiKeyConfigured = false;
+    }
+  }
+
+  function applyServerApiKeyMode() {
+    if (!serverApiKeyConfigured) return false;
+    const changed = Boolean(state.settings.apiKey) || state.settings.useProxy !== true;
+    state.settings.apiKey = '';
+    state.settings.useProxy = true;
+    if (changed) hasUnsavedChanges = true;
+    return changed;
+  }
+
+  function hasUsableApiKey() {
+    if (serverApiKeyConfigured && state.settings.useProxy) return true;
+    return Boolean(String(state.settings.apiKey || '').trim());
+  }
+
   function applyPersistedState(parsed, { preserveActiveSession = false } = {}) {
     const previousActiveSessionId = state.activeSessionId;
     state.sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
@@ -238,6 +266,7 @@ import {
     state.characterCards = Array.isArray(parsed.characterCards) ? parsed.characterCards.map(migrateLibraryCharacterCard) : [];
     state.worldBooks = Array.isArray(parsed.worldBooks) ? parsed.worldBooks.map((book) => prepareWorldBookForLibrary(book, { source: book.source || 'imported', boundCharacterId: book.bound_character_id || '' })) : [];
     state.characterBookDecisions = parsed.characterBookDecisions && typeof parsed.characterBookDecisions === 'object' ? parsed.characterBookDecisions : {};
+    applyServerApiKeyMode();
     for (const session of state.sessions) migrateSession(session);
     bootstrapLibrariesFromSessions();
     if (preserveActiveSession && state.sessions.some((session) => session.id === previousActiveSessionId)) {
@@ -580,10 +609,15 @@ import {
   }
 
   function buildPersistedStateSnapshot() {
+    const settings = structuredCloneSafe(state.settings);
+    if (serverApiKeyConfigured) {
+      settings.apiKey = '';
+      settings.useProxy = true;
+    }
     return {
       sessions: state.sessions.map((session) => compactSessionForStorage(session)),
       activeSessionId: state.activeSessionId,
-      settings: structuredCloneSafe(state.settings),
+      settings,
       promptLibrary: structuredCloneSafe(state.promptLibrary),
       jailbreakPresets: structuredCloneSafe(state.jailbreakPresets),
       characterCards: structuredCloneSafe(state.characterCards),
@@ -2047,9 +2081,12 @@ import {
   function syncSettingsToInputs() {
     const s = state.settings;
     els.apiKeyInput.value = s.apiKey;
+    els.apiKeyInput.disabled = serverApiKeyConfigured;
+    els.apiKeyInput.placeholder = serverApiKeyConfigured ? '已使用服务器环境变量 DEEPSEEK_API_KEY' : 'sk-…';
     els.baseUrlInput.value = s.baseUrl;
     els.betaBaseUrlInput.value = s.betaBaseUrl;
     els.useProxyInput.checked = s.useProxy;
+    els.useProxyInput.disabled = serverApiKeyConfigured;
     els.modelSelect.value = s.model;
     els.modelSettingSelect.value = s.model;
     els.temperatureInput.value = s.temperature;
@@ -2097,6 +2134,17 @@ import {
   }
 
   function updateSetting(key, value) {
+    if (serverApiKeyConfigured && key === 'apiKey') {
+      state.settings.apiKey = '';
+      syncSettingsToInputs();
+      return;
+    }
+    if (serverApiKeyConfigured && key === 'useProxy') {
+      state.settings.useProxy = true;
+      syncSettingsToInputs();
+      toast('服务器已配置 DEEPSEEK_API_KEY，已固定使用服务端代理。');
+      return;
+    }
     if (key === 'temperature') value = clamp(Number(value), 0, 2);
     if (key === 'topP') value = clamp(Number(value), 0, 1);
     if (key === 'maxTokens') value = clamp(Number.parseInt(value || 1, 10), 1, 32768);
@@ -3100,10 +3148,10 @@ import {
     if (generating) return stopGeneration();
     let content = String(text || '').trim();
     if (!content) return;
-    if (!state.settings.apiKey.trim()) {
+    if (!hasUsableApiKey()) {
       toggleSettings(true);
-      els.apiKeyInput.focus();
-      toast('请先在设置中填写 DeepSeek API Key。', 'error');
+      if (!serverApiKeyConfigured) els.apiKeyInput.focus();
+      toast(serverApiKeyConfigured ? '服务器 API Key 未生效，请检查服务端环境变量和代理配置。' : '请先在设置中填写 DeepSeek API Key。', 'error');
       return;
     }
     if (state.settings.toolsEnabled && !validateToolsJson({ silent: false })) return;
@@ -4009,7 +4057,7 @@ import {
 
   async function runFimCompletion() {
     if (state.settings.thinking) return toast('FIM 仅在非思考模式下可用，请先关闭 Thinking Mode。', 'error');
-    if (!state.settings.apiKey.trim()) return toast('请先填写 API Key。', 'error');
+    if (!hasUsableApiKey()) return toast(serverApiKeyConfigured ? '服务器 API Key 未生效，请检查服务端环境变量和代理配置。' : '请先填写 API Key。', 'error');
     const prompt = els.fimPrefix.value;
     const suffix = els.fimSuffix.value;
     if (!prompt.trim() && !suffix.trim()) return toast('请至少输入 Prefix 或 Suffix。', 'error');

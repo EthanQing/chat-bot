@@ -6,15 +6,17 @@ export async function fetchDeepSeekRequest({ endpoint, body, baseUrl, signal, se
   for (let attempt = 0; attempt < 4; attempt += 1) {
     if (attempt > 0) await sleep(1000 * 2 ** (attempt - 1));
     try {
+      const browserApiKey = String(settings.apiKey || '').trim();
+      const proxyHeaders = {
+        'Content-Type': 'application/json',
+        'x-target-url': targetUrl,
+      };
+      if (browserApiKey) proxyHeaders['x-api-key'] = browserApiKey;
       const response = await fetch(settings.useProxy ? '/proxy/deepseek' : targetUrl, {
         method: 'POST',
-        headers: settings.useProxy ? {
+        headers: settings.useProxy ? proxyHeaders : {
           'Content-Type': 'application/json',
-          'x-api-key': settings.apiKey.trim(),
-          'x-target-url': targetUrl,
-        } : {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${settings.apiKey.trim()}`,
+          Authorization: `Bearer ${browserApiKey}`,
         },
         body: JSON.stringify(body),
         signal,

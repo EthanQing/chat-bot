@@ -22,9 +22,9 @@ data/app-state.json
 
 ## 部署到服务器
 
-个人单用户部署可以使用：Python 服务监听 `127.0.0.1:8000`，Nginx 负责 HTTPS、Basic Auth 和反向代理。
+个人单用户部署可以使用：Python 服务监听本机内部端口，Nginx 负责 HTTPS、Basic Auth 和反向代理。
 
-阿里云 ECS 部署步骤见：[`docs/ALIYUN_PERSONAL_DEPLOY.md`](docs/ALIYUN_PERSONAL_DEPLOY.md)。
+无域名、使用公网 IP 和 `12321` 端口的个人部署步骤见：[`docs/PERSONAL_IP_12321_DEPLOY.md`](docs/PERSONAL_IP_12321_DEPLOY.md)。
 
 ## 主要功能
 

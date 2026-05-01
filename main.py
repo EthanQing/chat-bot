@@ -30,6 +30,7 @@ STATE_FILE = Path(os.environ.get("CHATBOT_STATE_FILE", DATA_ROOT / "app-state.js
 DEFAULT_HOST = os.environ.get("HOST", "0.0.0.0")
 DEFAULT_PORT = int(os.environ.get("PORT", "8000"))
 MAX_STATE_BODY_BYTES = int(os.environ.get("CHATBOT_MAX_STATE_BYTES", str(80 * 1024 * 1024)))
+SERVER_API_KEY = (os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("CHATBOT_API_KEY") or "").strip()
 STATE_LOCK = threading.Lock()
 
 
@@ -71,6 +72,12 @@ class ChatBotHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/state":
             self._handle_get_state()
+            return
+        if parsed.path == "/api/config":
+            self._send_json({
+                "serverApiKeyConfigured": bool(SERVER_API_KEY),
+                "maxStateBodyBytes": MAX_STATE_BODY_BYTES,
+            })
             return
         super().do_GET()
 
@@ -140,7 +147,7 @@ class ChatBotHandler(SimpleHTTPRequestHandler):
     def _proxy_deepseek(self) -> None:
         length = int(self.headers.get("Content-Length", "0") or "0")
         body = self.rfile.read(length)
-        api_key = self.headers.get("x-api-key", "").strip()
+        api_key = self.headers.get("x-api-key", "").strip() or SERVER_API_KEY
         target_url = self.headers.get("x-target-url", "").strip()
 
         if not api_key:
