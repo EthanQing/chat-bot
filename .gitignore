@@ -9,9 +9,6 @@ wheels/
 # Virtual environments
 .venv
 
-# Local shared app state, may contain API keys / private chat logs
-data/
-
 # Local environment secrets
 .env
 *.env
