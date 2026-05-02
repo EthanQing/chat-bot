@@ -246,6 +246,53 @@
   .settings-pages-nav button { padding: 8px 13px; font-size: 12px; }
   .formatting-console { margin: 0 14px 15px; padding: 13px; border-radius: 18px; }
   .formatting-console__header strong { font-size: 18px; }
+  .character-manager-backdrop { z-index: 84; background: rgba(0, 0, 0, 0.46); }
+  .character-manager-drawer {
+    z-index: 86;
+    width: 100%;
+    height: 100dvh;
+    border-left: 0;
+    border-radius: 0;
+  }
+  .character-manager-header {
+    min-height: calc(66px + env(safe-area-inset-top));
+    padding: calc(14px + env(safe-area-inset-top)) 16px 14px;
+  }
+  .character-manager-header strong { font-size: 19px; }
+  .character-manager-toolbar { padding: 12px 14px 14px; gap: 10px; }
+  .character-manager-body { padding: 14px; }
+  .character-manager-card {
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 11px;
+    padding: 12px;
+    border-radius: 18px;
+    box-shadow: none;
+  }
+  .character-card-avatar { width: 46px; height: 46px; border-radius: 15px; font-size: 14px; }
+  .character-card-title strong { font-size: 16px; }
+  .character-card-main p { font-size: 12px; -webkit-line-clamp: 2; }
+  .character-card-actions .small { padding: 7px 10px; font-size: 11px; }
+  .character-manager-editor { border-radius: 18px; padding: 13px; }
+  .character-manager-empty .empty-state__orb { width: 58px; height: 58px; border-radius: 18px; font-size: 24px; }
+  .user-profile-backdrop { z-index: 84; background: rgba(0, 0, 0, 0.46); }
+  .user-profile-drawer {
+    z-index: 87;
+    width: 100%;
+    height: 100dvh;
+    border-left: 0;
+    border-radius: 0;
+  }
+  .user-profile-header {
+    min-height: calc(66px + env(safe-area-inset-top));
+    padding: calc(14px + env(safe-area-inset-top)) 16px 14px;
+  }
+  .user-profile-header strong { font-size: 19px; }
+  .user-profile-body { padding: 14px; }
+  .user-profile-section { border-radius: 18px; margin-bottom: 13px; box-shadow: none; }
+  .user-profile-section label { font-size: 13px; }
+  .user-profile-section > .settings-grid-2 { margin: 0 17px 16px; }
+  .user-profile-footer { min-height: 68px; padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); }
+  .user-profile-footer > span { font-size: 11px; }
   .settings-grid-2,
   .regex-flags-grid { grid-template-columns: 1fr; gap: 9px; }
   .formatting-section { padding: 12px; border-radius: 15px; }

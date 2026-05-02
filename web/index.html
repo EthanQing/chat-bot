@@ -72,7 +72,8 @@
               <option value="deepseek-v4-flash">deepseek-v4-flash</option>
               <option value="deepseek-v4-pro">deepseek-v4-pro</option>
             </select>
-            <button class="chip persona-chip" id="personaTopBtn" aria-pressed="false">角色/背景</button>
+            <button class="icon-btn" id="userProfileBtn" title="用户角色设定" aria-label="打开用户角色设定" aria-expanded="false">👤</button>
+            <button class="icon-btn" id="characterManagerBtn" title="角色卡管理" aria-label="打开角色卡管理" aria-expanded="false">♟</button>
             <button class="chip" id="thinkingQuickBtn" aria-pressed="false">思考：关</button>
             <button class="chip" id="jsonQuickBtn" aria-pressed="false">JSON：关</button>
             <button class="icon-btn" id="themeToggleBtn" title="切换主题" aria-label="切换主题">◐</button>
@@ -137,6 +138,113 @@
         </footer>
       </main>
 
+      <button class="character-manager-backdrop" id="characterManagerBackdrop" type="button" tabindex="-1" aria-label="关闭角色卡管理"></button>
+      <aside class="character-manager-drawer" id="characterManagerDrawer" aria-label="角色卡管理侧边栏" aria-hidden="true">
+        <div class="drawer-header character-manager-header">
+          <div>
+            <strong>角色卡管理</strong>
+            <small id="characterManagerHint">集中管理角色卡资源库</small>
+          </div>
+          <button class="icon-btn" id="closeCharacterManagerBtn" aria-label="关闭角色卡管理">×</button>
+        </div>
+
+        <div class="character-manager-toolbar">
+          <label class="search-box character-manager-search" for="characterManagerSearch">
+            <span aria-hidden="true">⌕</span>
+            <input id="characterManagerSearch" placeholder="搜索名称、标签、作者…" autocomplete="off" />
+          </label>
+          <label class="character-manager-sort">排序
+            <select id="characterManagerSort" aria-label="角色卡排序方式">
+              <option value="updated_desc">最近更新</option>
+              <option value="created_desc">最近创建</option>
+              <option value="name_asc">名称 A-Z</option>
+            </select>
+          </label>
+          <div class="panel-actions wrap">
+            <button class="primary small" id="newCharacterCardBtn">＋ 新建角色卡</button>
+            <label class="ghost small import-label">上传/导入
+              <input id="characterManagerImportInput" type="file" multiple accept="application/json,.json,image/png,.png,.charx,application/zip" />
+            </label>
+            <button class="ghost small" id="exportCharacterLibraryBtn">导出全部</button>
+          </div>
+        </div>
+
+        <div class="character-manager-body">
+          <section class="character-manager-editor hidden" id="characterManagerEditor" aria-label="角色卡快速编辑">
+            <div class="section-title compact">
+              <div>
+                <strong id="characterManagerEditorTitle">编辑角色卡</strong>
+                <p>修改库内角色卡信息；已有对话仍保留自己的角色快照。</p>
+              </div>
+            </div>
+            <label>角色名称<input id="characterManagerNameInput" placeholder="角色名" /></label>
+            <label>标签（逗号分隔）<input id="characterManagerTagsInput" placeholder="fantasy, OC, imported" /></label>
+            <label>创作者<input id="characterManagerCreatorInput" placeholder="可选" /></label>
+            <label>简短描述<textarea id="characterManagerDescriptionInput" rows="4" spellcheck="false"></textarea></label>
+            <label>性格 personality<textarea id="characterManagerPersonalityInput" rows="3" spellcheck="false"></textarea></label>
+            <label>场景 scenario<textarea id="characterManagerScenarioInput" rows="3" spellcheck="false"></textarea></label>
+            <label>开场白 first_mes<textarea id="characterManagerFirstMesInput" rows="4" spellcheck="false"></textarea></label>
+            <div class="panel-actions wrap">
+              <button class="primary small" id="saveCharacterManagerEditorBtn">保存角色卡</button>
+              <button class="ghost small" id="cancelCharacterManagerEditorBtn">取消</button>
+            </div>
+          </section>
+
+          <div class="character-manager-list" id="characterManagerList" aria-live="polite"></div>
+        </div>
+      </aside>
+
+      <button class="user-profile-backdrop" id="userProfileBackdrop" type="button" tabindex="-1" aria-label="关闭用户角色设定"></button>
+      <aside class="user-profile-drawer" id="userProfileDrawer" aria-label="用户角色设定侧边栏" aria-hidden="true">
+        <div class="drawer-header user-profile-header">
+          <div>
+            <strong>用户角色设定</strong>
+            <small id="userProfileHint">作为当前对话的用户身份上下文</small>
+          </div>
+          <button class="icon-btn" id="closeUserProfileBtn" aria-label="关闭用户角色设定">×</button>
+        </div>
+
+        <div class="user-profile-body">
+          <details open class="user-profile-section">
+            <summary>基础信息</summary>
+            <label>名字 / 称呼<input id="userProfileNameInput" placeholder="例如：林舟、旅人、船长…" autocomplete="off" /></label>
+            <label>代称 / 称谓偏好<input id="userProfilePronounsInput" placeholder="例如：她/他/TA、老师、博士…" autocomplete="off" /></label>
+            <div class="settings-grid-2">
+              <label>年龄 / 阶段<input id="userProfileAgeInput" placeholder="例如：25、大学生、职场新人" autocomplete="off" /></label>
+              <label>职业 / 身份<input id="userProfileOccupationInput" placeholder="例如：产品经理、研究生、冒险者" autocomplete="off" /></label>
+            </div>
+          </details>
+
+          <details open class="user-profile-section">
+            <summary>身份背景</summary>
+            <label>身份描述<textarea id="userProfilePersonaInput" rows="4" placeholder="例如：我是刚到桐镇的外乡人，性格谨慎，正在寻找失踪的旧友…"></textarea></label>
+            <label>背景经历<textarea id="userProfileBackgroundInput" rows="4" placeholder="补充成长经历、人际关系、长期处境或世界观中的位置…"></textarea></label>
+            <label>当前目标 / 动机<textarea id="userProfileGoalsInput" rows="3" placeholder="例如：想学习某项技能、解决某个问题、推进某段剧情…"></textarea></label>
+          </details>
+
+          <details open class="user-profile-section">
+            <summary>对话偏好</summary>
+            <label>偏好语言<input id="userProfileLanguageInput" placeholder="例如：中文为主，必要时保留英文术语" autocomplete="off" /></label>
+            <label>回复风格<textarea id="userProfileToneInput" rows="3" placeholder="例如：直接给结论、步骤清晰、少套话；RP 时偏细腻描写…"></textarea></label>
+            <label>边界 / 避雷<textarea id="userProfileBoundariesInput" rows="3" placeholder="例如：不要替我做重大决定；避免恐怖描写；不使用某类称呼…"></textarea></label>
+          </details>
+
+          <details class="user-profile-section">
+            <summary>自定义字段</summary>
+            <label>自定义信息<textarea id="userProfileCustomFieldsInput" rows="6" placeholder="每行一个字段，例如：&#10;MBTI：INTJ&#10;口味偏好：少糖&#10;长期项目：个人知识库"></textarea></label>
+            <p class="muted">这些内容会随当前会话进入上下文。未填写字段不会发送给 AI。</p>
+          </details>
+        </div>
+
+        <div class="user-profile-footer">
+          <span id="userProfileSaveState">自动保存已启用</span>
+          <div class="panel-actions">
+            <button class="ghost small" id="resetUserProfileBtn">清空</button>
+            <button class="primary small" id="saveUserProfileBtn">保存</button>
+          </div>
+        </div>
+      </aside>
+
       <aside class="settings-drawer" id="settingsDrawer" aria-label="设置面板" aria-hidden="true">
         <div class="drawer-header">
           <div>
@@ -152,7 +260,6 @@
           <button data-settings-page="output">思考/输出</button>
           <button data-settings-page="prompt">System Prompt</button>
           <button data-settings-page="preset">破限/预设</button>
-          <button data-settings-page="character">角色/背景</button>
           <button data-settings-page="worldbook">世界书</button>
           <button data-settings-page="tools">工具</button>
           <button data-settings-page="ui">界面</button>

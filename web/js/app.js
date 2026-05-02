@@ -31,6 +31,7 @@ import {
 } from './message-parsers.js';
 import {
   parseCharacterCardFile,
+  normalizeCharacterCard,
   characterCardToPrompt,
   getCharacterGreeting,
   getCharacterGreetings,
@@ -100,6 +101,13 @@ import {
       selectedSessions: new Set(),
       stickyScroll: true,
       search: '',
+      userProfileOpen: false,
+      userProfileDirty: false,
+      characterManagerOpen: false,
+      characterManagerSearch: '',
+      characterManagerSort: 'updated_desc',
+      characterManagerVisibleCount: 48,
+      editingCharacterCardId: '',
       characterPanelOpen: false,
       settingsPage: 'model',
       openSessionMenuId: null,
@@ -181,7 +189,7 @@ import {
     for (const id of [
       'app', 'sidebar', 'collapseSidebarBtn', 'openSidebarBtn', 'newSessionBtn', 'sessionSearch', 'batchModeBtn', 'selectAllBtn', 'deleteSelectedBtn',
       'sessionList', 'exportAllBtn', 'importAllInput', 'chatMain', 'activeTitle', 'sessionStats', 'modelSelect', 'thinkingQuickBtn', 'jsonQuickBtn',
-      'personaTopBtn', 'themeToggleBtn', 'settingsBtn', 'messages', 'emptyState', 'starterGrid', 'backLatestBtn', 'composer', 'messageInput', 'sendBtn', 'charCounter',
+      'userProfileBtn', 'characterManagerBtn', 'themeToggleBtn', 'settingsBtn', 'messages', 'emptyState', 'starterGrid', 'backLatestBtn', 'composer', 'messageInput', 'sendBtn', 'charCounter',
       'hintText', 'prefixBox', 'assistantPrefix', 'openFimBtn', 'promptLibraryBtn', 'settingsDrawer', 'settingsPagesNav', 'settingsPageHint', 'closeSettingsBtn', 'apiKeyInput', 'baseUrlInput',
       'betaBaseUrlInput', 'useProxyInput', 'modelSettingSelect', 'modelNote', 'temperatureInput', 'temperatureValue', 'topPInput', 'topPValue',
       'maxTokensInput', 'responseLengthInput', 'customLengthInput', 'customLengthLabel', 'presencePenaltyInput', 'frequencyPenaltyInput', 'stopInput', 'thinkingInput', 'reasoningEffortInput', 'jsonModeInput',
@@ -192,6 +200,8 @@ import {
       'promptLibrary', 'jailbreakLibrarySearch', 'jailbreakLibrarySelect', 'jailbreakPresetNameInput', 'jailbreakPresetDescriptionInput', 'jailbreakPresetTagsInput', 'jailbreakPostHistoryInput', 'applyJailbreakPresetBtn', 'saveJailbreakPresetBtn', 'newJailbreakPresetBtn', 'copyJailbreakPresetBtn', 'setDefaultJailbreakBtn', 'deleteJailbreakPresetBtn', 'exportJailbreakPresetBtn', 'jailbreakLibraryImportInput',
       'jailbreakEnabledInput', 'jailbreakImportInput', 'clearJailbreakBtn', 'jailbreakSummary', 'jailbreakPromptInput',
       'characterLibrarySearch', 'characterLibrarySelect', 'applyCharacterCardBtn', 'saveCharacterCardBtn', 'syncCharacterCardBtn', 'deleteCharacterCardBtn', 'exportCharacterCardBtn', 'userNameInput', 'userPersonaInput', 'rpModeInput', 'rpPerspectiveInput', 'rpSuggestionsInput', 'rpMemoryInput', 'backgroundEnabledInput', 'backgroundInput', 'characterEnabledInput', 'characterCardInput', 'startCharacterChatBtn', 'insertGreetingBtn', 'clearCharacterBtn',
+      'userProfileBackdrop', 'userProfileDrawer', 'userProfileHint', 'closeUserProfileBtn', 'userProfileNameInput', 'userProfilePronounsInput', 'userProfileAgeInput', 'userProfileOccupationInput', 'userProfilePersonaInput', 'userProfileBackgroundInput', 'userProfileGoalsInput', 'userProfileLanguageInput', 'userProfileToneInput', 'userProfileBoundariesInput', 'userProfileCustomFieldsInput', 'userProfileSaveState', 'resetUserProfileBtn', 'saveUserProfileBtn',
+      'characterManagerBackdrop', 'characterManagerDrawer', 'characterManagerHint', 'closeCharacterManagerBtn', 'characterManagerSearch', 'characterManagerSort', 'characterManagerImportInput', 'exportCharacterLibraryBtn', 'newCharacterCardBtn', 'characterManagerEditor', 'characterManagerEditorTitle', 'characterManagerNameInput', 'characterManagerTagsInput', 'characterManagerCreatorInput', 'characterManagerDescriptionInput', 'characterManagerPersonalityInput', 'characterManagerScenarioInput', 'characterManagerFirstMesInput', 'saveCharacterManagerEditorBtn', 'cancelCharacterManagerEditorBtn', 'characterManagerList',
       'characterCardSummary', 'characterGreetingSelect', 'characterNameInput', 'characterDescriptionInput', 'characterPersonalityInput', 'characterScenarioInput', 'characterFirstMesInput', 'characterMesExampleInput', 'characterSystemPromptInput', 'characterPostHistoryInput', 'characterCreatorNotesInput', 'characterCardPreview', 'characterBackgroundDetails', 'toolsEnabledInput', 'toolsJsonInput', 'formatToolsBtn', 'themeInput', 'fontScaleInput', 'fontScaleValue', 'timestampsInput',
       'worldBookLibrarySearch', 'worldBookLibrarySelect', 'activeWorldBookSelect', 'applyWorldBookFromLibraryBtn', 'saveWorldBookBtn', 'newWorldBookBtn', 'deleteWorldBookBtn', 'exportWorldBookBtn', 'worldBookEnabledInput', 'worldBookImportInput', 'clearWorldBookBtn', 'worldBookScanDepthInput', 'worldBookMaxEntriesInput', 'worldBookTokenBudgetInput', 'worldBookRecursiveInput', 'worldBookSummary', 'worldBookEditor', 'applyWorldBookEditBtn', 'worldBookActivePreview', 'worldBookTestInput', 'worldBookTestResult',
       'lineNumbersInput', 'tokenPanel', 'syncStatus', 'clearHistoryBtn', 'truncateHistoryBtn', 'exportJsonBtn', 'exportMarkdownBtn', 'exportTxtBtn', 'fimPanel',
@@ -396,6 +406,7 @@ import {
     migrateRawJailbreakPreset(session);
     session.userName ??= '';
     session.userPersona ??= '';
+    ensureUserProfile(session);
     session.rpMode = Boolean(session.rpMode);
     session.rpPerspective ||= 'second';
     session.rpSuggestions = session.rpSuggestions !== false;
@@ -767,6 +778,7 @@ import {
       jailbreakPostHistoryInstructions: '',
       userName: '',
       userPersona: '',
+      userProfile: defaultUserProfile(),
       rpMode: false,
       rpPerspective: 'second',
       rpSuggestions: true,
@@ -799,6 +811,29 @@ import {
   function touchSession(session = activeSession()) {
     if (!session) return;
     session.updatedAt = nowISO();
+  }
+
+  function defaultUserProfile() {
+    return {
+      pronouns: '',
+      age: '',
+      occupation: '',
+      background: '',
+      goals: '',
+      language: '',
+      tone: '',
+      boundaries: '',
+      customFields: '',
+    };
+  }
+
+  function ensureUserProfile(session = activeSession()) {
+    if (!session) return defaultUserProfile();
+    session.userProfile = {
+      ...defaultUserProfile(),
+      ...(session.userProfile && typeof session.userProfile === 'object' ? session.userProfile : {}),
+    };
+    return session.userProfile;
   }
 
   function renderResourceLibraries() {
@@ -1022,6 +1057,7 @@ import {
     }).join('');
     if (state.characterCards.some((card) => card.id === selected)) els.characterLibrarySelect.value = selected;
     renderCharacterLibrarySelectionMeta();
+    if (state.ui.characterManagerOpen) renderCharacterManager();
   }
 
   function renderCharacterLibrarySelectionMeta() {
@@ -1086,26 +1122,252 @@ import {
   }
 
   function deleteSelectedCharacterCard() {
-    const id = selectedOptionValue(els.characterLibrarySelect);
+    deleteCharacterCardById(selectedOptionValue(els.characterLibrarySelect));
+  }
+
+  function exportSelectedCharacterCard() {
+    exportCharacterCardById(selectedOptionValue(els.characterLibrarySelect));
+  }
+
+  function getCharacterManagerItems() {
+    const query = state.ui.characterManagerSearch || '';
+    const items = filteredLibraryItems(state.characterCards, query, ['name', 'description', 'personality', 'scenario', 'tags', 'creator'])
+      .map((card) => ({ ...card, conversation_count: countCharacterConversations(card.id) }));
+    const byTime = (key) => (a, b) => new Date(b[key] || 0) - new Date(a[key] || 0) || String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN');
+    const sort = state.ui.characterManagerSort || 'updated_desc';
+    if (sort === 'created_desc') return items.sort(byTime('created_at'));
+    if (sort === 'name_asc') return items.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN'));
+    return items.sort(byTime('updated_at'));
+  }
+
+  function renderCharacterManager() {
+    if (!els.characterManagerList) return;
+    if (document.activeElement !== els.characterManagerSearch) {
+      els.characterManagerSearch.value = state.ui.characterManagerSearch || '';
+    }
+    els.characterManagerSort.value = state.ui.characterManagerSort || 'updated_desc';
+    const total = state.characterCards.length;
+    const items = getCharacterManagerItems();
+    const visibleCount = clamp(Number(state.ui.characterManagerVisibleCount || 48), 12, Math.max(items.length, 48));
+    const visible = items.slice(0, visibleCount);
+    if (els.characterManagerHint) {
+      els.characterManagerHint.textContent = total
+        ? `${total} 张角色卡 · 当前显示 ${visible.length}/${items.length}`
+        : '集中管理角色卡资源库';
+    }
+    renderCharacterManagerEditor();
+    if (!total) {
+      els.characterManagerList.innerHTML = `
+        <div class="character-manager-empty">
+          <div class="empty-state__orb">♟</div>
+          <strong>还没有角色卡</strong>
+          <p>点击“新建角色卡”手动创建，或上传 JSON / PNG / CHARX 角色卡文件。</p>
+          <button class="primary small" data-character-action="new">创建第一个</button>
+        </div>`;
+      return;
+    }
+    if (!items.length) {
+      els.characterManagerList.innerHTML = `
+        <div class="character-manager-empty compact">
+          <strong>没有匹配结果</strong>
+          <p>换个关键词，或清空搜索条件查看全部角色卡。</p>
+        </div>`;
+      return;
+    }
+    const cardsHtml = visible.map(characterManagerCardHtml).join('');
+    const moreHtml = visible.length < items.length
+      ? `<button class="ghost character-manager-load" data-character-action="load-more">加载更多（剩余 ${items.length - visible.length}）</button>`
+      : '';
+    els.characterManagerList.innerHTML = `${cardsHtml}${moreHtml}`;
+  }
+
+  function characterManagerCardHtml(card) {
+    const description = String(card.description || card.personality || card.scenario || '暂无描述').replace(/\s+/g, ' ').trim();
+    const tags = Array.isArray(card.tags) ? card.tags.slice(0, 3) : [];
+    const updated = formatTime(card.updated_at || card.updatedAt || card.created_at || card.createdAt);
+    const created = formatTime(card.created_at || card.createdAt);
+    const conversations = countCharacterConversations(card.id);
+    const greetings = getCharacterGreetings(card).length;
+    return `
+      <article class="character-manager-card" data-character-id="${escapeHtml(card.id)}">
+        <div class="character-card-avatar" aria-hidden="true">${escapeHtml(characterInitials(card))}</div>
+        <div class="character-card-main">
+          <div class="character-card-title">
+            <strong>${escapeHtml(card.name || '未命名角色')}</strong>
+            <span>${escapeHtml(card.spec_version || card.source_format || 'card')}</span>
+          </div>
+          <p>${escapeHtml(description.slice(0, 180))}</p>
+          <div class="character-card-meta">
+            ${updated ? `<span>更新 ${escapeHtml(updated)}</span>` : ''}
+            ${created ? `<span>创建 ${escapeHtml(created)}</span>` : ''}
+            <span>${conversations} 对话</span>
+            <span>${greetings} 开场白</span>
+          </div>
+          ${tags.length ? `<div class="character-card-tags">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
+          <div class="character-card-actions">
+            <button class="primary small" data-character-action="start" data-character-id="${escapeHtml(card.id)}">开始对话</button>
+            <button class="ghost small" data-character-action="edit" data-character-id="${escapeHtml(card.id)}">编辑</button>
+            <button class="ghost small" data-character-action="export" data-character-id="${escapeHtml(card.id)}">导出</button>
+            <button class="danger small" data-character-action="delete" data-character-id="${escapeHtml(card.id)}">删除</button>
+          </div>
+        </div>
+      </article>`;
+  }
+
+  function characterInitials(card = {}) {
+    return String(card.name || '角色').trim().slice(0, 2) || '角';
+  }
+
+  function onCharacterManagerListClick(event) {
+    const button = event.target.closest('[data-character-action]');
+    if (!button) return;
+    const action = button.dataset.characterAction;
+    const id = button.dataset.characterId || button.closest('[data-character-id]')?.dataset.characterId || '';
+    if (action === 'new') return newCharacterCardFromManager();
+    if (action === 'load-more') {
+      state.ui.characterManagerVisibleCount = Number(state.ui.characterManagerVisibleCount || 48) + 48;
+      renderCharacterManager();
+      return;
+    }
+    if (action === 'start') return startCharacterChatFromLibrary(id);
+    if (action === 'edit') return editCharacterCardFromManager(id);
+    if (action === 'export') return exportCharacterCardById(id);
+    if (action === 'delete') return deleteCharacterCardById(id);
+  }
+
+  function newCharacterCardFromManager() {
+    state.ui.editingCharacterCardId = '__new__';
+    renderCharacterManager();
+    setTimeout(() => els.characterManagerNameInput?.focus({ preventScroll: true }), 40);
+  }
+
+  function editCharacterCardFromManager(id) {
+    if (!state.characterCards.some((card) => card.id === id)) return toast('未找到角色卡。', 'error');
+    state.ui.editingCharacterCardId = id;
+    renderCharacterManager();
+    setTimeout(() => els.characterManagerNameInput?.focus({ preventScroll: true }), 40);
+  }
+
+  function closeCharacterManagerEditor() {
+    state.ui.editingCharacterCardId = '';
+    renderCharacterManager();
+  }
+
+  function renderCharacterManagerEditor() {
+    if (!els.characterManagerEditor) return;
+    const id = state.ui.editingCharacterCardId || '';
+    const isNew = id === '__new__';
+    const card = isNew ? null : state.characterCards.find((item) => item.id === id);
+    els.characterManagerEditor.classList.toggle('hidden', !isNew && !card);
+    if (!isNew && !card) return;
+    els.characterManagerEditorTitle.textContent = isNew ? '新建角色卡' : `编辑：${card.name || '未命名角色'}`;
+    els.characterManagerNameInput.value = card?.name || '';
+    els.characterManagerTagsInput.value = Array.isArray(card?.tags) ? card.tags.join(', ') : '';
+    els.characterManagerCreatorInput.value = card?.creator || '';
+    els.characterManagerDescriptionInput.value = card?.description || '';
+    els.characterManagerPersonalityInput.value = card?.personality || '';
+    els.characterManagerScenarioInput.value = card?.scenario || '';
+    els.characterManagerFirstMesInput.value = card?.first_mes || '';
+  }
+
+  function collectCharacterManagerEditorCard() {
+    const id = state.ui.editingCharacterCardId;
+    const existing = id && id !== '__new__' ? state.characterCards.find((card) => card.id === id) : null;
+    const name = String(els.characterManagerNameInput.value || '').trim();
+    if (!name) throw new Error('角色名称不能为空。');
+    const card = {
+      ...(existing ? structuredCloneSafe(existing) : {
+        id: uid('char'),
+        spec: 'chara_card_v2',
+        spec_version: 'v2',
+        source: '手动创建',
+        source_format: 'manual',
+        alternate_greetings: [],
+      }),
+      name,
+      tags: String(els.characterManagerTagsInput.value || '').split(',').map((item) => item.trim()).filter(Boolean),
+      creator: els.characterManagerCreatorInput.value || '',
+      description: els.characterManagerDescriptionInput.value || '',
+      personality: els.characterManagerPersonalityInput.value || '',
+      scenario: els.characterManagerScenarioInput.value || '',
+      first_mes: els.characterManagerFirstMesInput.value || '',
+      updated_at: nowISO(),
+    };
+    delete card.raw;
+    delete card.rawPayload;
+    delete card.pngMetadataKey;
+    applyCharacterFieldEdit(card, 'name', card.name);
+    for (const key of ['description', 'personality', 'scenario', 'first_mes']) {
+      applyCharacterFieldEdit(card, key, card[key]);
+    }
+    card.raw_json = JSON.stringify(characterCardExportPayload(card), null, 2);
+    return prepareCharacterForLibrary(card, { sourceFormat: card.source_format || 'manual' });
+  }
+
+  function saveCharacterManagerEditor() {
+    try {
+      const card = collectCharacterManagerEditorCard();
+      const index = state.characterCards.findIndex((item) => item.id === card.id);
+      if (index >= 0) state.characterCards[index] = card;
+      else state.characterCards.unshift(card);
+      state.ui.editingCharacterCardId = '';
+      persistSoon();
+      renderCharacterLibrary();
+      renderCharacterManager();
+      toast(`角色卡「${card.name}」已保存。`, 'success');
+    } catch (error) {
+      toast(error.message || '角色卡保存失败。', 'error');
+    }
+  }
+
+  function characterCardExportPayload(card = {}) {
+    const copy = structuredCloneSafe(card);
+    delete copy.raw;
+    delete copy.rawPayload;
+    delete copy.raw_json;
+    delete copy.pngMetadataKey;
+    return copy;
+  }
+
+  function exportCharacterCardById(id) {
+    const card = state.characterCards.find((item) => item.id === id);
+    if (!card) return toast('请先选择角色卡。', 'error');
+    download(`${safeFileName(card.name)}.character.json`, JSON.stringify(characterCardExportPayload(card), null, 2), 'application/json');
+  }
+
+  function exportCharacterLibrary() {
+    if (!state.characterCards.length) return toast('角色卡库为空，暂无可导出的内容。');
+    download(`character-library-${dateSlug()}.json`, JSON.stringify({
+      exportedAt: nowISO(),
+      characterCards: state.characterCards.map(characterCardExportPayload),
+    }, null, 2), 'application/json');
+  }
+
+  function deleteCharacterCardById(id) {
     const card = state.characterCards.find((item) => item.id === id);
     if (!card) return toast('请先选择角色卡。', 'error');
     const refs = countCharacterConversations(id);
-    const removeConversations = refs && confirm(`角色「${card.name}」下有 ${refs} 条对话。点击“确定”一并删除这些对话；点击“取消”仅移除角色卡库条目，已有对话保留快照。`);
-    if (!refs && !confirm(`确定删除角色卡「${card.name}」吗？`)) return;
+    if (!confirm(`确定删除角色卡「${card.name}」吗？已有对话会保留角色快照。`)) return;
+    const removeConversations = refs && confirm(`角色「${card.name}」下有 ${refs} 条对话。是否一并删除这些对话？`);
     state.characterCards = state.characterCards.filter((item) => item.id !== id);
     if (removeConversations) {
       state.sessions = state.sessions.filter((session) => session.characterCardId !== id && session.characterCard?.library_id !== id);
       ensureSession();
     }
+    if (state.ui.editingCharacterCardId === id) state.ui.editingCharacterCardId = '';
     persistSoon();
     renderCharacterLibrary();
+    renderCharacterManager();
     renderSessions();
+    renderCharacterPanel();
+    renderStats();
+    toast(`角色卡「${card.name}」已删除。`, 'success');
   }
 
-  function exportSelectedCharacterCard() {
-    const card = state.characterCards.find((item) => item.id === selectedOptionValue(els.characterLibrarySelect));
-    if (!card) return toast('请先选择角色卡。', 'error');
-    download(`${safeFileName(card.name)}.character.json`, JSON.stringify(card.raw || card, null, 2), 'application/json');
+  function startCharacterChatFromLibrary(id) {
+    const card = state.characterCards.find((item) => item.id === id);
+    if (!card) return toast('未找到角色卡。', 'error');
+    startCharacterChatWithCard(card, { sourceSession: activeSession(), closeManager: true, requireGreeting: false });
   }
 
   function prepareWorldBookForLibrary(book, { source = 'imported', boundCharacterId = '' } = {}) {
@@ -1264,7 +1526,12 @@ import {
     els.newSessionBtn.addEventListener('click', () => newSession());
     els.collapseSidebarBtn.addEventListener('click', () => toggleSidebar());
     els.openSidebarBtn.addEventListener('click', () => toggleSidebar(false));
-    els.personaTopBtn.addEventListener('click', toggleCharacterSettingsPanel);
+    els.userProfileBtn.addEventListener('click', () => toggleUserProfile(true));
+    els.closeUserProfileBtn.addEventListener('click', () => toggleUserProfile(false));
+    els.userProfileBackdrop.addEventListener('click', () => toggleUserProfile(false));
+    els.characterManagerBtn.addEventListener('click', () => toggleCharacterManager(true));
+    els.closeCharacterManagerBtn.addEventListener('click', () => toggleCharacterManager(false));
+    els.characterManagerBackdrop.addEventListener('click', () => toggleCharacterManager(false));
     els.settingsBtn.addEventListener('click', () => toggleSettings(true));
     els.closeSettingsBtn.addEventListener('click', () => toggleSettings(false));
     els.themeToggleBtn.addEventListener('click', cycleTheme);
@@ -1326,8 +1593,25 @@ import {
     els.backLatestBtn.addEventListener('click', () => scrollToBottom(true));
 
     bindSettingsEvents();
+    bindUserProfileEvents();
     bindFimEvents();
     bindKeyboardShortcuts();
+  }
+
+  function bindUserProfileEvents() {
+    const inputs = [
+      'userProfileNameInput', 'userProfilePronounsInput', 'userProfileAgeInput', 'userProfileOccupationInput',
+      'userProfilePersonaInput', 'userProfileBackgroundInput', 'userProfileGoalsInput',
+      'userProfileLanguageInput', 'userProfileToneInput', 'userProfileBoundariesInput', 'userProfileCustomFieldsInput',
+    ];
+    for (const key of inputs) {
+      els[key]?.addEventListener('input', () => saveUserProfileFromDrawer({ toastOnSave: false }));
+      els[key]?.addEventListener('blur', () => {
+        if (state.ui.userProfileDirty) saveUserProfileFromDrawer({ toastOnSave: true, auto: true });
+      });
+    }
+    els.saveUserProfileBtn?.addEventListener('click', () => saveUserProfileFromDrawer({ toastOnSave: true }));
+    els.resetUserProfileBtn?.addEventListener('click', resetUserProfileDrawer);
   }
 
   function bindSettingsEvents() {
@@ -1443,6 +1727,7 @@ import {
       session.userName = els.userNameInput.value;
       touchSession(session);
       persistSoon();
+      renderUserProfileDrawer();
       renderCharacterPanel();
       renderStats();
     });
@@ -1451,6 +1736,7 @@ import {
       session.userPersona = els.userPersonaInput.value;
       touchSession(session);
       persistSoon();
+      renderUserProfileDrawer();
       renderCharacterPanel();
       renderStats();
     });
@@ -1586,6 +1872,22 @@ import {
     els.syncCharacterCardBtn.addEventListener('click', syncCurrentCharacterFromLibrary);
     els.deleteCharacterCardBtn.addEventListener('click', deleteSelectedCharacterCard);
     els.exportCharacterCardBtn.addEventListener('click', exportSelectedCharacterCard);
+    els.characterManagerSearch.addEventListener('input', () => {
+      state.ui.characterManagerSearch = els.characterManagerSearch.value;
+      state.ui.characterManagerVisibleCount = 48;
+      renderCharacterManager();
+    });
+    els.characterManagerSort.addEventListener('change', () => {
+      state.ui.characterManagerSort = els.characterManagerSort.value;
+      state.ui.characterManagerVisibleCount = 48;
+      renderCharacterManager();
+    });
+    els.characterManagerImportInput.addEventListener('change', importCharacterCardToManager);
+    els.exportCharacterLibraryBtn.addEventListener('click', exportCharacterLibrary);
+    els.newCharacterCardBtn.addEventListener('click', newCharacterCardFromManager);
+    els.cancelCharacterManagerEditorBtn.addEventListener('click', closeCharacterManagerEditor);
+    els.saveCharacterManagerEditorBtn.addEventListener('click', saveCharacterManagerEditor);
+    els.characterManagerList.addEventListener('click', onCharacterManagerListClick);
 
     els.worldBookLibrarySearch.addEventListener('input', renderWorldBookLibrary);
     els.worldBookLibrarySelect.addEventListener('change', applySelectedWorldBookForEditing);
@@ -1940,6 +2242,8 @@ import {
     window.addEventListener('keydown', (event) => {
       const mod = event.ctrlKey || event.metaKey;
       if (event.key === 'Escape') {
+        if (state.ui.userProfileOpen) toggleUserProfile(false);
+        if (state.ui.characterManagerOpen) toggleCharacterManager(false);
         toggleSettings(false);
         if (els.shortcutDialog.open) els.shortcutDialog.close();
         return;
@@ -2021,6 +2325,7 @@ import {
     document.documentElement.style.setProperty('--font-scale', String(s.fontScale));
     applyChatDisplayMode();
     renderFormattingPanel();
+    renderUserProfileDrawer();
     renderJailbreakPanel();
     renderWorldBookPanel();
   }
@@ -2126,6 +2431,8 @@ import {
     renderPromptTemplates();
     renderPromptLibrary();
     renderResourceLibraries();
+    renderUserProfileDrawer();
+    renderCharacterManager();
     renderMessages();
     renderStats();
     updateComposerState();
@@ -2134,9 +2441,15 @@ import {
   function syncUiChrome() {
     els.app.classList.toggle('sidebar-collapsed', state.ui.sidebarCollapsed);
     els.app.classList.toggle('settings-open', state.ui.settingsOpen);
+    els.app.classList.toggle('user-profile-open', state.ui.userProfileOpen);
+    els.app.classList.toggle('character-manager-open', state.ui.characterManagerOpen);
     els.settingsDrawer.setAttribute('aria-hidden', String(!state.ui.settingsOpen));
+    els.userProfileDrawer?.setAttribute('aria-hidden', String(!state.ui.userProfileOpen));
+    els.characterManagerDrawer?.setAttribute('aria-hidden', String(!state.ui.characterManagerOpen));
     els.openSidebarBtn.title = state.ui.sidebarCollapsed ? '打开会话侧边栏' : '会话侧边栏已打开';
     els.openSidebarBtn.setAttribute('aria-expanded', String(!state.ui.sidebarCollapsed));
+    els.userProfileBtn?.setAttribute('aria-expanded', String(state.ui.userProfileOpen));
+    els.characterManagerBtn?.setAttribute('aria-expanded', String(state.ui.characterManagerOpen));
     applyChatDisplayMode();
     renderSettingsPage();
     updatePersonaTopButton();
@@ -2162,13 +2475,49 @@ import {
 
   function toggleSettings(open, page = state.ui.settingsPage || 'model') {
     state.ui.settingsOpen = Boolean(open);
+    if (state.ui.settingsOpen) {
+      state.ui.userProfileOpen = false;
+      state.ui.characterManagerOpen = false;
+      state.ui.editingCharacterCardId = '';
+    }
     if (state.ui.settingsOpen && window.innerWidth <= 820) state.ui.sidebarCollapsed = true;
     if (state.ui.settingsOpen) setSettingsPage(page, { silentChrome: true });
     if (!state.ui.settingsOpen) state.ui.characterPanelOpen = false;
     syncUiChrome();
   }
 
+  function toggleCharacterManager(open) {
+    state.ui.characterManagerOpen = Boolean(open);
+    if (state.ui.characterManagerOpen) {
+      state.ui.settingsOpen = false;
+      state.ui.userProfileOpen = false;
+      state.ui.characterPanelOpen = false;
+      state.ui.openSessionMenuId = null;
+      if (window.innerWidth <= 820) state.ui.sidebarCollapsed = true;
+      renderCharacterManager();
+      setTimeout(() => els.characterManagerSearch?.focus({ preventScroll: true }), 80);
+    } else {
+      state.ui.editingCharacterCardId = '';
+    }
+    syncUiChrome();
+  }
+
+  function toggleUserProfile(open) {
+    state.ui.userProfileOpen = Boolean(open);
+    if (state.ui.userProfileOpen) {
+      state.ui.settingsOpen = false;
+      state.ui.characterManagerOpen = false;
+      state.ui.editingCharacterCardId = '';
+      state.ui.characterPanelOpen = false;
+      if (window.innerWidth <= 820) state.ui.sidebarCollapsed = true;
+      renderUserProfileDrawer();
+      setTimeout(() => els.userProfileNameInput?.focus({ preventScroll: true }), 80);
+    }
+    syncUiChrome();
+  }
+
   function setSettingsPage(page, { silentChrome = false } = {}) {
+    if (page === 'character') page = 'model';
     state.ui.settingsPage = page || 'model';
     state.ui.characterPanelOpen = state.ui.settingsPage === 'character';
     renderSettingsPage();
@@ -2192,7 +2541,6 @@ import {
       output: 'Thinking、JSON、Prefix/FIM 与消息渲染管线',
       prompt: 'System Prompt 与 Prompt 库',
       preset: '外部破限词/预设，独立于 System Prompt',
-      character: '角色卡、玩家身份、背景和 RP 模式',
       worldbook: '世界书关键词触发和条目注入',
       tools: '函数调用和工具定义',
       ui: '主题、字体和显示偏好',
@@ -2207,6 +2555,9 @@ import {
       return;
     }
     state.ui.settingsOpen = true;
+    state.ui.userProfileOpen = false;
+    state.ui.characterManagerOpen = false;
+    state.ui.editingCharacterCardId = '';
     setSettingsPage('character', { silentChrome: true });
     syncUiChrome();
     setTimeout(() => {
@@ -2215,21 +2566,98 @@ import {
   }
 
   function updatePersonaTopButton() {
-    if (!els.personaTopBtn) return;
     const session = activeSession();
-    const hasCharacter = Boolean(session?.characterCard);
-    const hasBackground = Boolean(String(session?.background || '').trim());
-    const hasIdentity = Boolean(String(session?.userName || session?.userPersona || '').trim());
-    const enabled = (session?.characterCardEnabled !== false && hasCharacter) || (session?.backgroundEnabled !== false && hasBackground) || hasIdentity;
-    const active = state.ui.settingsOpen && state.ui.characterPanelOpen;
-    els.personaTopBtn.setAttribute('aria-pressed', String(active || enabled));
-    els.personaTopBtn.textContent = enabled ? '角色/背景：已设' : '角色/背景';
-    els.personaTopBtn.title = active ? '关闭角色卡与背景设定' : '打开角色卡与背景设定';
+    const profile = ensureUserProfile(session);
+    const hasIdentity = Boolean(String(session?.userName || session?.userPersona || Object.values(profile).join(' ')).trim());
+    els.userProfileBtn?.classList.toggle('active', state.ui.userProfileOpen || hasIdentity);
+    els.userProfileBtn?.setAttribute('title', hasIdentity ? '用户角色设定：已填写' : '用户角色设定');
+  }
+
+  function renderUserProfileDrawer() {
+    if (!els.userProfileDrawer) return;
+    const session = activeSession();
+    if (!session) return;
+    const profile = ensureUserProfile(session);
+    const set = (key, value = '') => {
+      if (els[key] && document.activeElement !== els[key]) els[key].value = value || '';
+    };
+    set('userProfileNameInput', session.userName);
+    set('userProfilePersonaInput', session.userPersona);
+    set('userProfilePronounsInput', profile.pronouns);
+    set('userProfileAgeInput', profile.age);
+    set('userProfileOccupationInput', profile.occupation);
+    set('userProfileBackgroundInput', profile.background);
+    set('userProfileGoalsInput', profile.goals);
+    set('userProfileLanguageInput', profile.language);
+    set('userProfileToneInput', profile.tone);
+    set('userProfileBoundariesInput', profile.boundaries);
+    set('userProfileCustomFieldsInput', profile.customFields);
+    updateUserProfileSaveState();
+  }
+
+  function saveUserProfileFromDrawer({ toastOnSave = false, auto = false } = {}) {
+    const session = activeSession();
+    if (!session || !els.userProfileDrawer) return;
+    const profile = ensureUserProfile(session);
+    session.userName = els.userProfileNameInput?.value || '';
+    session.userPersona = els.userProfilePersonaInput?.value || '';
+    profile.pronouns = els.userProfilePronounsInput?.value || '';
+    profile.age = els.userProfileAgeInput?.value || '';
+    profile.occupation = els.userProfileOccupationInput?.value || '';
+    profile.background = els.userProfileBackgroundInput?.value || '';
+    profile.goals = els.userProfileGoalsInput?.value || '';
+    profile.language = els.userProfileLanguageInput?.value || '';
+    profile.tone = els.userProfileToneInput?.value || '';
+    profile.boundaries = els.userProfileBoundariesInput?.value || '';
+    profile.customFields = els.userProfileCustomFieldsInput?.value || '';
+    touchSession(session);
+    state.ui.userProfileDirty = !toastOnSave;
+    persistSoon();
+    syncUserProfileMirrorInputs();
+    updatePersonaTopButton();
+    renderStats();
+    updateUserProfileSaveState(auto ? '自动保存完成' : toastOnSave ? '已保存' : '正在自动保存…');
+    if (toastOnSave) toast(auto ? '用户设定已自动保存。' : '用户设定已保存。', 'success');
+  }
+
+  function syncUserProfileMirrorInputs() {
+    const session = activeSession();
+    if (!session) return;
+    if (els.userNameInput && document.activeElement !== els.userNameInput) els.userNameInput.value = session.userName || '';
+    if (els.userPersonaInput && document.activeElement !== els.userPersonaInput) els.userPersonaInput.value = session.userPersona || '';
+  }
+
+  function updateUserProfileSaveState(text = '') {
+    if (!els.userProfileSaveState) return;
+    els.userProfileSaveState.textContent = text || (state.ui.userProfileDirty ? '有未提示的自动保存' : '自动保存已启用');
+  }
+
+  function resetUserProfileDrawer() {
+    if (!confirm('确定清空当前会话的用户角色设定吗？')) return;
+    const session = activeSession();
+    if (!session) return;
+    session.userName = '';
+    session.userPersona = '';
+    session.userProfile = defaultUserProfile();
+    touchSession(session);
+    state.ui.userProfileDirty = false;
+    persistSoon();
+    renderUserProfileDrawer();
+    syncUserProfileMirrorInputs();
+    updatePersonaTopButton();
+    renderStats();
+    toast('用户设定已清空。', 'success');
   }
 
   function newSession() {
     if (generating) stopGeneration();
+    const previous = activeSession();
     const session = createSession('新会话');
+    if (previous) {
+      session.userName = previous.userName || '';
+      session.userPersona = previous.userPersona || '';
+      session.userProfile = structuredCloneSafe(ensureUserProfile(previous));
+    }
     state.sessions.unshift(session);
     state.activeSessionId = session.id;
     rememberLocalActiveSession();
@@ -3646,14 +4074,8 @@ import {
   function buildSceneContextMessage(session, assistantIndex = session.messages.length) {
     const parts = [];
     const userName = getSessionUserName(session);
-    if (userName || String(session.userPersona || '').trim()) {
-      parts.push([
-        '【用户身份】',
-        userName ? `用户名字/称呼：${userName}` : '',
-        String(session.userPersona || '').trim() ? `身份描述：\n${resolveCharacterPlaceholders(session.userPersona, session.characterCard?.name || '角色', userName)}` : '',
-        '称呼用户时优先使用上述名字/称呼；不要把用户称为“用户”。',
-      ].filter(Boolean).join('\n'));
-    }
+    const userProfilePrompt = buildUserProfilePrompt(session);
+    if (userProfilePrompt) parts.push(userProfilePrompt);
     if (session.rpMode) {
       parts.push(buildRoleplayInstruction(session));
     }
@@ -3693,6 +4115,30 @@ import {
       '',
       parts.join('\n\n'),
     ].join('\n');
+  }
+
+  function buildUserProfilePrompt(session = activeSession()) {
+    if (!session) return '';
+    const userName = getSessionUserName(session);
+    const profile = ensureUserProfile(session);
+    const charName = session.characterCard?.name || '角色';
+    const resolve = (value) => resolveCharacterPlaceholders(value, charName, userName).trim();
+    const lines = [
+      userName ? `用户名字/称呼：${userName}` : '',
+      profile.pronouns ? `代称/称谓偏好：${resolve(profile.pronouns)}` : '',
+      profile.age ? `年龄/阶段：${resolve(profile.age)}` : '',
+      profile.occupation ? `职业/身份：${resolve(profile.occupation)}` : '',
+      String(session.userPersona || '').trim() ? `身份描述：\n${resolve(session.userPersona)}` : '',
+      profile.background ? `背景经历：\n${resolve(profile.background)}` : '',
+      profile.goals ? `当前目标/动机：\n${resolve(profile.goals)}` : '',
+      profile.language ? `偏好语言：${resolve(profile.language)}` : '',
+      profile.tone ? `回复风格偏好：\n${resolve(profile.tone)}` : '',
+      profile.boundaries ? `边界/避雷：\n${resolve(profile.boundaries)}` : '',
+      profile.customFields ? `自定义信息：\n${resolve(profile.customFields)}` : '',
+    ].filter(Boolean);
+    if (!lines.length) return '';
+    lines.push('称呼用户时优先使用上述名字/称呼和代称；不要把用户称为“用户”。');
+    return ['【用户身份与对话偏好】', ...lines].join('\n');
   }
 
   function buildWorldBookPrompt(session, assistantIndex = session.messages.length, { entries = null, label = '世界书触发条目' } = {}) {
@@ -3790,8 +4236,12 @@ import {
       })
       .join('\n\n');
     const userName = getSessionUserName(session);
+    const profile = ensureUserProfile(session);
     return [
       session.userPersona ? `用户身份：${resolveCharacterPlaceholders(session.userPersona, session.characterCard?.name || '角色', userName)}` : '',
+      profile.background ? `用户背景：${resolveCharacterPlaceholders(profile.background, session.characterCard?.name || '角色', userName)}` : '',
+      profile.goals ? `用户目标：${resolveCharacterPlaceholders(profile.goals, session.characterCard?.name || '角色', userName)}` : '',
+      profile.customFields ? `用户自定义信息：${resolveCharacterPlaceholders(profile.customFields, session.characterCard?.name || '角色', userName)}` : '',
       session.backgroundEnabled !== false ? session.background || '' : '',
       session.characterCardEnabled !== false && session.characterCard ? [session.characterCard.name, session.characterCard.description, session.characterCard.scenario].filter(Boolean).join('\n') : '',
       recent,
@@ -4463,46 +4913,90 @@ import {
   async function importCharacterCard(event) {
     const files = [...(event.target.files || [])];
     event.target.value = '';
+    await importCharacterFiles(files, { applySingleToSession: true, confirmSingle: true });
+  }
+
+  async function importCharacterCardToManager(event) {
+    const files = [...(event.target.files || [])];
+    event.target.value = '';
+    await importCharacterFiles(files, { applySingleToSession: false, confirmSingle: false });
+  }
+
+  async function importCharacterFiles(files, { applySingleToSession = false, confirmSingle = false } = {}) {
     if (!files.length) return;
     try {
       const session = activeSession();
-      let lastCard = null;
+      const parsedCards = [];
       for (const file of files) {
-        const parsed = await parseCharacterCardFile(file);
-        if (files.length === 1 && !confirm([
+        const cards = await parseCharacterCardsFromFile(file);
+        parsedCards.push(...cards.map((card) => ({ card, file })));
+      }
+      if (!parsedCards.length) throw new Error('未识别到可导入的角色卡。');
+      if (confirmSingle && parsedCards.length === 1) {
+        const parsed = parsedCards[0].card;
+        if (!confirm([
           `确认导入角色卡：${parsed.name || '未命名角色'}？`,
           `规格：${parsed.spec_version || '未知'}；标签：${(parsed.tags || []).join(', ') || '无'}`,
           `字段估算：约 ${Number(parsed.tokenStats?.total || estimateTokens(characterCardToPrompt(parsed))).toLocaleString()} tokens`,
           `描述摘要：${String(parsed.description || '').replace(/\s+/g, ' ').slice(0, 120) || '无'}`,
           parsed.character_book?.entries?.length ? `包含内嵌世界书：${parsed.character_book.entries.length} 条` : '',
         ].filter(Boolean).join('\n'))) return;
-        const card = prepareCharacterForLibrary(parsed, { sourceFormat: inferCharacterSourceFormat(file.name) });
+      }
+
+      let lastCard = null;
+      for (const { card: parsed, file } of parsedCards) {
+        const card = prepareCharacterForLibrary(parsed, { sourceFormat: parsed.source_format || inferCharacterSourceFormat(file?.name || parsed.source || '') });
         const index = state.characterCards.findIndex((item) => item.id === card.id);
         if (index >= 0) state.characterCards[index] = card;
         else state.characterCards.push(card);
         lastCard = card;
-        if (files.length === 1) {
+        if (applySingleToSession && parsedCards.length === 1) {
           applyCharacterCardToSession(session, card);
           await handleEmbeddedCharacterBook(session, session.characterCard);
         } else if (card.character_book) {
           await handleEmbeddedCharacterBook({ ...session, characterCard: card, characterCardId: card.id }, card);
         }
       }
-      touchSession(session);
+
+      if (applySingleToSession && parsedCards.length === 1) touchSession(session);
       persistSoon();
       renderCharacterLibrary();
+      renderCharacterManager();
       renderWorldBookLibrary();
       renderCharacterPanel();
       renderStats();
-      if (files.length === 1 && !session.messages.length && getCharacterGreetings(session.characterCard).length) {
+      if (applySingleToSession && parsedCards.length === 1 && !session.messages.length && getCharacterGreetings(session.characterCard).length) {
         insertCharacterGreeting({ append: true, silent: true });
         toast(`已导入角色卡：${session.characterCard.name || '未命名角色'}，已入库并自动插入开场白。`, 'success');
       } else {
-        toast(`已导入 ${files.length} 张角色卡到角色库${lastCard ? `，最后一张：${lastCard.name}` : ''}。`, 'success');
+        toast(`已导入 ${parsedCards.length} 张角色卡到角色库${lastCard ? `，最后一张：${lastCard.name}` : ''}。`, 'success');
       }
     } catch (error) {
       toast(`角色卡导入失败：${error.message}`, 'error');
     }
+  }
+
+  async function parseCharacterCardsFromFile(file) {
+    const lowerName = String(file?.name || '').toLowerCase();
+    if ((lowerName.endsWith('.json') || file?.type === 'application/json') && file?.text) {
+      const text = await file.text();
+      try {
+        const data = JSON.parse(text);
+        const items = Array.isArray(data?.characterCards) ? data.characterCards : Array.isArray(data) ? data : null;
+        if (items) {
+          return items.map((item, index) => normalizeImportedCharacterCard(item, `${file.name}#${index + 1}`));
+        }
+      } catch (_) {
+        // Fall through to the standard parser, which also supports base64 JSON.
+      }
+    }
+    return [await parseCharacterCardFile(file)];
+  }
+
+  function normalizeImportedCharacterCard(item, source = '') {
+    if (item?.data && typeof item.data === 'object') return normalizeCharacterCard(item, source);
+    if (item?.name || item?.description || item?.scenario || item?.first_mes) return item;
+    return normalizeCharacterCard(item, source);
   }
 
   async function handleEmbeddedCharacterBook(session, card) {
@@ -4573,26 +5067,43 @@ import {
     }
     const card = session.characterCard;
     if (!getCharacterGreetings(card || {}).length) return toast('请先导入带开场白的角色卡。', 'error');
-    if (generating) stopGeneration();
     const greetingIndex = Number.parseInt(els.characterGreetingSelect?.value || session.greetingIndex || '0', 10) || 0;
+    startCharacterChatWithCard(card, { sourceSession: session, greetingIndex, requireGreeting: true });
+  }
+
+  function startCharacterChatWithCard(card, {
+    sourceSession = activeSession(),
+    greetingIndex = 0,
+    requireGreeting = false,
+    closeManager = false,
+  } = {}) {
+    if (!card) return toast('请先选择角色卡。', 'error');
+    const greetings = getCharacterGreetings(card || {});
+    if (requireGreeting && !greetings.length) return toast('请先导入带开场白的角色卡。', 'error');
+    if (generating) stopGeneration();
     const next = createSession(`${card.name || '角色'} · 新对话`);
-    copyCharacterSessionSettings(session, next);
+    copyCharacterSessionSettings(sourceSession || activeSession(), next);
+    applyCharacterCardToSession(next, card);
     next.greetingIndex = greetingIndex;
     next.messages = [];
     state.sessions.unshift(next);
     state.activeSessionId = next.id;
     rememberLocalActiveSession();
-    insertCharacterGreeting({ append: true, silent: true, greetingIndex });
+    if (closeManager) {
+      state.ui.characterManagerOpen = false;
+      state.ui.editingCharacterCardId = '';
+    }
+    if (greetings.length) insertCharacterGreeting({ append: true, silent: true, greetingIndex });
     persistSoon();
     syncSettingsToInputs();
     renderAll();
-    toast(`已新建与 ${card.name || '角色'} 的独立对话，原会话已保留。`, 'success');
+    toast(`已新建与 ${card.name || '角色'} 的独立对话${greetings.length ? '，并插入开场白' : ''}。`, 'success');
   }
 
   function copyCharacterSessionSettings(from, to) {
     for (const key of [
       'systemPrompt', 'jailbreakEnabled', 'jailbreakPrompt', 'jailbreakSource', 'jailbreakImportMeta', 'jailbreakImportKind', 'jailbreakParsed', 'jailbreakMessages', 'jailbreakLayout', 'jailbreakSettings', 'jailbreakPresetId', 'jailbreakPostHistoryInstructions',
-      'userName', 'userPersona', 'rpMode', 'rpPerspective', 'rpSuggestions', 'rpMemory', 'background', 'backgroundEnabled',
+      'userName', 'userPersona', 'userProfile', 'rpMode', 'rpPerspective', 'rpSuggestions', 'rpMemory', 'background', 'backgroundEnabled',
       'characterCardEnabled', 'characterCard', 'characterBookHandling', 'worldBookEnabled', 'worldBook', 'worldBookScanDepth', 'worldBookMaxEntries', 'worldBookTokenBudget', 'worldBookRecursive',
     ]) {
       to[key] = structuredCloneSafe(from[key]);
@@ -4709,7 +5220,8 @@ import {
   function sessionToMarkdown(session) {
     const lines = [`# ${session.title}`, '', `> 导出时间：${new Date().toLocaleString()}`, '', `## System Prompt`, '', getEffectiveSystemPrompt(session) || '', ''];
     if (session.jailbreakPrompt) lines.push('## 外部预设 / 破限词', '', `> ${session.jailbreakEnabled ? '已启用' : '未启用'}${session.jailbreakSource ? ` · 来源：${session.jailbreakSource}` : ''}`, '', session.jailbreakPrompt, '');
-    if (session.userName || session.userPersona) lines.push('## 我的身份', '', session.userName ? `名字/称呼：${session.userName}` : '', session.userPersona || '', '');
+    const userProfilePrompt = buildUserProfilePrompt(session);
+    if (userProfilePrompt) lines.push('## 我的身份', '', userProfilePrompt, '');
     if (session.background) lines.push('## 预设背景', '', session.background, '');
     if (session.worldBook) {
       lines.push('## 世界书', '', `> ${session.worldBookEnabled ? '已启用' : '未启用'} · ${session.worldBook.entries?.length || 0} 条${session.worldBook.source ? ` · 来源：${session.worldBook.source}` : ''}`, '');
