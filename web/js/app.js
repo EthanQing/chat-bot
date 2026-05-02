@@ -5,7 +5,6 @@ import {
   CONTEXT_LIMIT,
   MAX_TOOL_LOOPS,
   DEFAULT_SYSTEM_PROMPT,
-  PROMPT_TEMPLATES,
   DEFAULT_SETTINGS,
   MODEL_NOTES,
 } from './config.js';
@@ -39,8 +38,6 @@ import {
   resolveCharacterPlaceholders,
 } from './character-card.js';
 import {
-  extractSystemPromptFromJson,
-  normalizePromptLibraryImport,
   parseExternalPresetText,
   isSillyTavernDynamicMarker,
   resolveSillyTavernRuntimeMacros,
@@ -89,7 +86,6 @@ import {
     sessions: [],
     activeSessionId: null,
     settings: { ...DEFAULT_SETTINGS },
-    promptLibrary: [],
     jailbreakPresets: [],
     characterCards: [],
     worldBooks: [],
@@ -190,22 +186,22 @@ import {
       'app', 'sidebar', 'collapseSidebarBtn', 'openSidebarBtn', 'newSessionBtn', 'sessionSearch', 'batchModeBtn', 'selectAllBtn', 'deleteSelectedBtn',
       'sessionList', 'exportAllBtn', 'importAllInput', 'chatMain', 'activeTitle', 'sessionStats', 'modelSelect', 'thinkingQuickBtn', 'jsonQuickBtn',
       'userProfileBtn', 'characterManagerBtn', 'themeToggleBtn', 'settingsBtn', 'messages', 'emptyState', 'starterGrid', 'backLatestBtn', 'composer', 'messageInput', 'sendBtn', 'charCounter',
-      'hintText', 'prefixBox', 'assistantPrefix', 'openFimBtn', 'promptLibraryBtn', 'settingsDrawer', 'settingsPagesNav', 'settingsPageHint', 'closeSettingsBtn', 'apiKeyInput', 'baseUrlInput',
+      'hintText', 'prefixBox', 'assistantPrefix', 'settingsDrawer', 'settingsPagesNav', 'settingsPageHint', 'closeSettingsBtn', 'apiKeyInput', 'baseUrlInput',
       'betaBaseUrlInput', 'useProxyInput', 'modelSettingSelect', 'modelNote', 'temperatureInput', 'temperatureValue', 'topPInput', 'topPValue',
       'maxTokensInput', 'responseLengthInput', 'customLengthInput', 'customLengthLabel', 'presencePenaltyInput', 'frequencyPenaltyInput', 'stopInput', 'thinkingInput', 'reasoningEffortInput', 'jsonModeInput',
-      'prefixEnabledInput', 'fimEnabledInput', 'chatDisplayModeInput', 'showTagsInput', 'autoFixMarkdownInput', 'showReasoningBlocksInput', 'allowScopedRegexInput',
+      'prefixEnabledInput', 'chatDisplayModeInput', 'showTagsInput', 'autoFixMarkdownInput', 'showReasoningBlocksInput', 'allowScopedRegexInput',
       'reasoningTemplateSelect', 'reasoningTemplateEnabledInput', 'reasoningTemplateNameInput', 'reasoningTemplateOpenInput', 'reasoningTemplateCloseInput', 'newReasoningTemplateBtn', 'saveReasoningTemplateBtn', 'deleteReasoningTemplateBtn',
       'regexScriptSelect', 'regexScriptNameInput', 'regexFindInput', 'regexReplaceInput', 'regexTrimInput', 'regexPlacementUserInput', 'regexPlacementAiInput', 'regexPlacementWorldInput', 'regexPlacementReasoningInput', 'regexMarkdownOnlyInput', 'regexPromptOnlyInput', 'regexDisabledInput', 'regexRunOnEditInput', 'regexSubstituteInput', 'regexMinDepthInput', 'regexMaxDepthInput', 'newRegexScriptBtn', 'copyRegexScriptBtn', 'saveRegexScriptBtn', 'deleteRegexScriptBtn', 'moveRegexUpBtn', 'moveRegexDownBtn', 'exportRegexScriptsBtn', 'importRegexScriptsInput', 'regexTestPlacementInput', 'regexTestModeInput', 'regexTestInput', 'regexTestResult',
-      'systemPromptInput', 'promptTemplates', 'savePromptBtn', 'exportPromptBtn', 'importPromptInput',
-      'promptLibrary', 'jailbreakLibrarySearch', 'jailbreakLibrarySelect', 'jailbreakPresetNameInput', 'jailbreakPresetDescriptionInput', 'jailbreakPresetTagsInput', 'jailbreakPostHistoryInput', 'applyJailbreakPresetBtn', 'saveJailbreakPresetBtn', 'newJailbreakPresetBtn', 'copyJailbreakPresetBtn', 'setDefaultJailbreakBtn', 'deleteJailbreakPresetBtn', 'exportJailbreakPresetBtn', 'jailbreakLibraryImportInput',
+      'systemPromptInput',
+      'jailbreakLibrarySearch', 'jailbreakLibrarySelect', 'jailbreakPresetNameInput', 'jailbreakPresetDescriptionInput', 'jailbreakPresetTagsInput', 'jailbreakPostHistoryInput', 'applyJailbreakPresetBtn', 'saveJailbreakPresetBtn', 'newJailbreakPresetBtn', 'copyJailbreakPresetBtn', 'setDefaultJailbreakBtn', 'deleteJailbreakPresetBtn', 'exportJailbreakPresetBtn', 'jailbreakLibraryImportInput',
       'jailbreakEnabledInput', 'jailbreakImportInput', 'clearJailbreakBtn', 'jailbreakSummary', 'jailbreakPromptInput',
       'characterLibrarySearch', 'characterLibrarySelect', 'applyCharacterCardBtn', 'saveCharacterCardBtn', 'syncCharacterCardBtn', 'deleteCharacterCardBtn', 'exportCharacterCardBtn', 'userNameInput', 'userPersonaInput', 'rpModeInput', 'rpPerspectiveInput', 'rpSuggestionsInput', 'rpMemoryInput', 'backgroundEnabledInput', 'backgroundInput', 'characterEnabledInput', 'characterCardInput', 'startCharacterChatBtn', 'insertGreetingBtn', 'clearCharacterBtn',
       'userProfileBackdrop', 'userProfileDrawer', 'userProfileHint', 'closeUserProfileBtn', 'userProfileNameInput', 'userProfilePronounsInput', 'userProfileAgeInput', 'userProfileOccupationInput', 'userProfilePersonaInput', 'userProfileBackgroundInput', 'userProfileGoalsInput', 'userProfileLanguageInput', 'userProfileToneInput', 'userProfileBoundariesInput', 'userProfileCustomFieldsInput', 'userProfileSaveState', 'resetUserProfileBtn', 'saveUserProfileBtn',
       'characterManagerBackdrop', 'characterManagerDrawer', 'characterManagerHint', 'closeCharacterManagerBtn', 'characterManagerSearch', 'characterManagerSort', 'characterManagerImportInput', 'exportCharacterLibraryBtn', 'newCharacterCardBtn', 'characterManagerEditor', 'characterManagerEditorTitle', 'characterManagerNameInput', 'characterManagerTagsInput', 'characterManagerCreatorInput', 'characterManagerDescriptionInput', 'characterManagerPersonalityInput', 'characterManagerScenarioInput', 'characterManagerFirstMesInput', 'saveCharacterManagerEditorBtn', 'cancelCharacterManagerEditorBtn', 'characterManagerList',
       'characterCardSummary', 'characterGreetingSelect', 'characterNameInput', 'characterDescriptionInput', 'characterPersonalityInput', 'characterScenarioInput', 'characterFirstMesInput', 'characterMesExampleInput', 'characterSystemPromptInput', 'characterPostHistoryInput', 'characterCreatorNotesInput', 'characterCardPreview', 'characterBackgroundDetails', 'toolsEnabledInput', 'toolsJsonInput', 'formatToolsBtn', 'themeInput', 'fontScaleInput', 'fontScaleValue', 'timestampsInput',
       'worldBookLibrarySearch', 'worldBookLibrarySelect', 'activeWorldBookSelect', 'applyWorldBookFromLibraryBtn', 'saveWorldBookBtn', 'newWorldBookBtn', 'deleteWorldBookBtn', 'exportWorldBookBtn', 'worldBookEnabledInput', 'worldBookImportInput', 'clearWorldBookBtn', 'worldBookScanDepthInput', 'worldBookMaxEntriesInput', 'worldBookTokenBudgetInput', 'worldBookRecursiveInput', 'worldBookSummary', 'worldBookEditor', 'applyWorldBookEditBtn', 'worldBookActivePreview', 'worldBookTestInput', 'worldBookTestResult',
-      'lineNumbersInput', 'tokenPanel', 'syncStatus', 'clearHistoryBtn', 'truncateHistoryBtn', 'exportJsonBtn', 'exportMarkdownBtn', 'exportTxtBtn', 'fimPanel',
-      'closeFimBtn', 'fimPrefix', 'fimResult', 'fimSuffix', 'runFimBtn', 'copyFimBtn', 'shortcutDialog', 'toastStack',
+      'lineNumbersInput', 'tokenPanel', 'syncStatus', 'clearHistoryBtn', 'truncateHistoryBtn', 'exportJsonBtn', 'exportMarkdownBtn', 'exportTxtBtn',
+      'shortcutDialog', 'toastStack',
     ]) {
       els[id] = $(id);
     }
@@ -279,7 +275,6 @@ import {
     state.sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
     state.activeSessionId = parsed.activeSessionId || null;
     state.settings = normalizeAppSettings(parsed.settings || {});
-    state.promptLibrary = Array.isArray(parsed.promptLibrary) ? parsed.promptLibrary : [];
     state.jailbreakPresets = Array.isArray(parsed.jailbreakPresets) ? parsed.jailbreakPresets.map(migrateJailbreakPreset) : [];
     state.characterCards = Array.isArray(parsed.characterCards) ? parsed.characterCards.map(migrateLibraryCharacterCard) : [];
     state.worldBooks = Array.isArray(parsed.worldBooks) ? parsed.worldBooks.map((book) => prepareWorldBookForLibrary(book, { source: book.source || 'imported', boundCharacterId: book.bound_character_id || '' })) : [];
@@ -637,7 +632,6 @@ import {
       sessions: state.sessions.map((session) => compactSessionForStorage(session)),
       activeSessionId: state.activeSessionId,
       settings,
-      promptLibrary: structuredCloneSafe(state.promptLibrary),
       jailbreakPresets: structuredCloneSafe(state.jailbreakPresets),
       characterCards: structuredCloneSafe(state.characterCards),
       worldBooks: structuredCloneSafe(state.worldBooks),
@@ -1594,7 +1588,6 @@ import {
 
     bindSettingsEvents();
     bindUserProfileEvents();
-    bindFimEvents();
     bindKeyboardShortcuts();
   }
 
@@ -1634,7 +1627,6 @@ import {
       ['reasoningEffortInput', 'reasoningEffort', 'value'],
       ['jsonModeInput', 'jsonMode', 'checked'],
       ['prefixEnabledInput', 'prefixEnabled', 'checked'],
-      ['fimEnabledInput', 'fimEnabled', 'checked'],
       ['toolsEnabledInput', 'toolsEnabled', 'checked'],
       ['toolsJsonInput', 'toolsJson', 'value'],
       ['themeInput', 'theme', 'value'],
@@ -1667,26 +1659,6 @@ import {
       renderStats();
     });
 
-    els.promptTemplates.addEventListener('click', (event) => {
-      const button = event.target.closest('[data-template]');
-      if (!button) return;
-      const template = PROMPT_TEMPLATES[Number(button.dataset.template)];
-      if (!template) return;
-      if (template.name === '自定义…') {
-        els.systemPromptInput.focus();
-        return;
-      }
-      activeSession().systemPrompt = template.prompt;
-      els.systemPromptInput.value = template.prompt;
-      touchSession();
-      persistSoon();
-      toast(`已应用 Prompt：${template.name}`, 'success');
-    });
-
-    els.savePromptBtn.addEventListener('click', savePromptToLibrary);
-    els.exportPromptBtn.addEventListener('click', exportPrompts);
-    els.importPromptInput.addEventListener('change', importPrompts);
-    els.promptLibrary.addEventListener('click', onPromptLibraryClick);
     els.jailbreakEnabledInput.addEventListener('change', () => {
       const session = activeSession();
       session.jailbreakEnabled = els.jailbreakEnabledInput.checked;
@@ -2225,19 +2197,6 @@ import {
     });
   }
 
-  function bindFimEvents() {
-    els.openFimBtn.addEventListener('click', () => {
-      updateSetting('fimEnabled', true);
-      els.fimPanel.classList.remove('hidden');
-    });
-    els.closeFimBtn.addEventListener('click', () => {
-      updateSetting('fimEnabled', false);
-      els.fimPanel.classList.add('hidden');
-    });
-    els.runFimBtn.addEventListener('click', runFimCompletion);
-    els.copyFimBtn.addEventListener('click', () => copyText(els.fimResult.value, '已复制 FIM 补全结果'));
-  }
-
   function bindKeyboardShortcuts() {
     window.addEventListener('keydown', (event) => {
       const mod = event.ctrlKey || event.metaKey;
@@ -2301,7 +2260,6 @@ import {
     els.jsonModeInput.checked = s.jsonMode;
     els.prefixEnabledInput.checked = s.prefixEnabled;
     els.assistantPrefix.value = s.assistantPrefix;
-    els.fimEnabledInput.checked = s.fimEnabled;
     els.toolsEnabledInput.checked = s.toolsEnabled;
     els.toolsJsonInput.value = s.toolsJson;
     els.themeInput.value = s.theme;
@@ -2321,7 +2279,6 @@ import {
     els.jsonQuickBtn.setAttribute('aria-pressed', String(s.jsonMode));
     els.jsonQuickBtn.textContent = `JSON：${s.jsonMode ? '开' : '关'}`;
     els.prefixBox.classList.toggle('hidden', !s.prefixEnabled);
-    els.fimPanel.classList.toggle('hidden', !s.fimEnabled);
     document.documentElement.style.setProperty('--font-scale', String(s.fontScale));
     applyChatDisplayMode();
     renderFormattingPanel();
@@ -2350,10 +2307,6 @@ import {
     if (key === 'model') {
       els.modelSelect.value = value;
       els.modelSettingSelect.value = value;
-    }
-    if (key === 'thinking' && value && state.settings.fimEnabled) {
-      state.settings.fimEnabled = false;
-      toast('Thinking Mode 下 FIM 不可用，已关闭 FIM 面板。');
     }
     if (key === 'responseLength') {
       els.customLengthLabel?.classList.toggle('hidden', value !== 'custom');
@@ -2428,8 +2381,6 @@ import {
   function renderAll() {
     syncUiChrome();
     renderSessions();
-    renderPromptTemplates();
-    renderPromptLibrary();
     renderResourceLibraries();
     renderUserProfileDrawer();
     renderCharacterManager();
@@ -2538,8 +2489,8 @@ import {
     const labels = {
       api: 'API Key、Base URL 与本地代理',
       model: '模型、采样参数和目标回复长度',
-      output: 'Thinking、JSON、Prefix/FIM 与消息渲染管线',
-      prompt: 'System Prompt 与 Prompt 库',
+      output: 'Thinking、JSON、Prefix 与消息渲染管线',
+      prompt: 'System Prompt',
       preset: '外部破限词/预设，独立于 System Prompt',
       worldbook: '世界书关键词触发和条目注入',
       tools: '函数调用和工具定义',
@@ -4416,62 +4367,6 @@ import {
     }
   }
 
-  async function runFimCompletion() {
-    if (state.settings.thinking) return toast('FIM 仅在非思考模式下可用，请先关闭 Thinking Mode。', 'error');
-    if (!hasUsableApiKey()) return toast(serverApiKeyConfigured ? '服务器 API Key 未生效，请检查服务端环境变量和代理配置。' : '请先填写 API Key。', 'error');
-    const prompt = els.fimPrefix.value;
-    const suffix = els.fimSuffix.value;
-    if (!prompt.trim() && !suffix.trim()) return toast('请至少输入 Prefix 或 Suffix。', 'error');
-    els.fimResult.value = '';
-    els.runFimBtn.disabled = true;
-    const controller = new AbortController();
-    try {
-      const body = {
-        model: state.settings.model,
-        prompt,
-        suffix,
-        max_tokens: Math.min(state.settings.maxTokens, 4096),
-        stream: true,
-        temperature: state.settings.temperature,
-        top_p: state.settings.topP,
-      };
-      const response = await fetchDeepSeek('/completions', body, state.settings.betaBaseUrl, controller.signal);
-      await streamFimResponse(response, (text) => { els.fimResult.value += text; });
-      toast('FIM 补全完成。', 'success');
-    } catch (error) {
-      toast(friendlyError(error), 'error');
-    } finally {
-      els.runFimBtn.disabled = false;
-    }
-  }
-
-  async function streamFimResponse(response, onText) {
-    if (!response.body) {
-      const data = await response.json();
-      onText(data.choices?.[0]?.text || '');
-      return;
-    }
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const events = buffer.split(/\n\n|\r\n\r\n/);
-      buffer = events.pop() || '';
-      for (const event of events) {
-        for (const line of event.split(/\r?\n/)) {
-          const data = line.trim().startsWith('data:') ? line.trim().slice(5).trim() : '';
-          if (!data || data === '[DONE]') continue;
-          const chunk = JSON.parse(data);
-          const text = chunk.choices?.[0]?.text ?? chunk.choices?.[0]?.delta?.content ?? '';
-          if (text) onText(text);
-        }
-      }
-    }
-  }
-
   function onMessagesScroll() {
     userScrolledAway = !isNearBottom();
     updateBackLatestButton();
@@ -4534,49 +4429,6 @@ import {
       summary.reasoning += usage.completion_tokens_details?.reasoning_tokens || 0;
     }
     return summary;
-  }
-
-  function renderPromptTemplates() {
-    els.promptTemplates.innerHTML = PROMPT_TEMPLATES.map((tpl, index) => `<button type="button" data-template="${index}">${escapeHtml(tpl.name)}</button>`).join('');
-  }
-
-  function renderPromptLibrary() {
-    if (!state.promptLibrary.length) {
-      els.promptLibrary.innerHTML = '<p class="muted">Prompt 库为空，可将当前 System Prompt 保存为模板。</p>';
-      return;
-    }
-    els.promptLibrary.innerHTML = state.promptLibrary.map((prompt) => `<div class="prompt-item" data-prompt-id="${prompt.id}"><div><strong>${escapeHtml(prompt.name)}</strong><br><small>${escapeHtml((prompt.tags || []).join(', '))}</small></div><div><button data-action="use-prompt">使用</button><button data-action="delete-prompt">删除</button></div></div>`).join('');
-  }
-
-  function savePromptToLibrary() {
-    const content = activeSession().systemPrompt || '';
-    if (!content.trim()) return toast('当前 System Prompt 为空。', 'error');
-    const name = prompt('模板名称', `Prompt ${state.promptLibrary.length + 1}`);
-    if (!name) return;
-    const tags = prompt('标签（逗号分隔，可选）', '') || '';
-    state.promptLibrary.push({ id: uid('prompt'), name: name.trim(), prompt: content, tags: tags.split(',').map((t) => t.trim()).filter(Boolean), createdAt: nowISO() });
-    persistSoon();
-    renderPromptLibrary();
-    toast('Prompt 已保存。', 'success');
-  }
-
-  function onPromptLibraryClick(event) {
-    const item = event.target.closest('.prompt-item');
-    if (!item) return;
-    const promptItem = state.promptLibrary.find((p) => p.id === item.dataset.promptId);
-    if (!promptItem) return;
-    const action = event.target.dataset.action;
-    if (action === 'use-prompt') {
-      activeSession().systemPrompt = promptItem.prompt;
-      els.systemPromptInput.value = promptItem.prompt;
-      touchSession();
-      persistSoon();
-      toast(`已应用 Prompt：${promptItem.name}`, 'success');
-    } else if (action === 'delete-prompt') {
-      state.promptLibrary = state.promptLibrary.filter((p) => p.id !== promptItem.id);
-      persistSoon();
-      renderPromptLibrary();
-    }
   }
 
   async function importJailbreakPreset(event) {
@@ -5171,7 +5023,6 @@ import {
     download(`deepseek-chat-backup-${dateSlug()}.json`, JSON.stringify({
       sessions: state.sessions.map((session) => compactSessionForStorage(session)),
       settings: { ...state.settings, apiKey: '' },
-      promptLibrary: state.promptLibrary,
       jailbreakPresets: state.jailbreakPresets,
       characterCards: state.characterCards,
       worldBooks: state.worldBooks,
@@ -5188,7 +5039,6 @@ import {
       if (!Array.isArray(data.sessions)) throw new Error('备份文件缺少 sessions 数组。');
       state.sessions = data.sessions;
       for (const session of state.sessions) migrateSession(session);
-      state.promptLibrary = Array.isArray(data.promptLibrary) ? data.promptLibrary : state.promptLibrary;
       state.jailbreakPresets = Array.isArray(data.jailbreakPresets) ? data.jailbreakPresets.map(migrateJailbreakPreset) : state.jailbreakPresets;
       state.characterCards = Array.isArray(data.characterCards) ? data.characterCards.map(migrateLibraryCharacterCard) : state.characterCards;
       state.worldBooks = Array.isArray(data.worldBooks) ? data.worldBooks : state.worldBooks;
@@ -5241,40 +5091,6 @@ import {
       const view = getMessageView(message);
       return `[${view.role}] ${formatTime(view.createdAt || message.createdAt)}\n${view.content || ''}`;
     }).join('\n\n---\n\n');
-  }
-
-  function exportPrompts() {
-    download(`prompt-library-${dateSlug()}.json`, JSON.stringify(state.promptLibrary, null, 2), 'application/json');
-  }
-
-  async function importPrompts(event) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    try {
-      const raw = await file.text();
-      const data = JSON.parse(raw);
-      const extracted = extractSystemPromptFromJson(data);
-      if (extracted?.prompt?.trim()) {
-        const session = activeSession();
-        session.systemPrompt = extracted.prompt.trim();
-        touchSession(session);
-        els.systemPromptInput.value = session.systemPrompt;
-        persistSoon();
-        renderStats();
-        toast(`已从 ${file.name} 导入 System Prompt：约 ${estimateTokens(session.systemPrompt).toLocaleString()} tokens。`, 'success');
-        return;
-      }
-
-      const prompts = normalizePromptLibraryImport(data, { uid, nowISO });
-      if (!prompts.length) throw new Error('无法识别此 JSON。请使用字符串、{systemPrompt/content/prompt}、OpenAI messages、SillyTavern prompts/prompt_order，或 Prompt 模板数组。');
-      state.promptLibrary.push(...prompts);
-      persistSoon();
-      renderPromptLibrary();
-      toast(`已导入 ${prompts.length} 个 Prompt 模板。`, 'success');
-    } catch (error) {
-      toast(`Prompt 导入失败：${error.message}`, 'error');
-    }
   }
 
   function copyLastAssistant() {

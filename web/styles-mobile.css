@@ -198,8 +198,6 @@
     line-height: 1.45;
   }
   .composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .composer__tools { grid-column: 1; grid-row: 2; display: flex; gap: 9px; align-items: center; }
-  .composer .icon-btn { width: 40px; min-width: 40px; height: 40px; border-radius: 14px; background: var(--panel-subtle); font-size: 13px; }
   .send-btn { grid-column: 2; grid-row: 2; min-width: 76px; height: 40px; border-radius: 14px; padding: 0 16px; font-size: 14px; }
   .prefix-box { margin-bottom: 9px; border-radius: 18px; padding: 12px; box-shadow: none; }
   .prefix-box textarea { min-height: 46px; font-size: 12px; }
@@ -300,26 +298,14 @@
   .settings-scroll { padding: 16px; }
   details { border-radius: 18px; margin-bottom: 14px; }
   summary { padding: 15px 17px; font-size: 15px; }
-  details > label, details > .muted, details > .panel-actions, details > .template-row, details > .prompt-library, details > .model-note, details > .token-panel, details > .sync-status { margin: 0 17px 16px; }
+  details > label, details > .muted, details > .panel-actions, details > .model-note, details > .token-panel, details > .sync-status { margin: 0 17px 16px; }
   .settings-scroll input:not([type="checkbox"]), .settings-scroll textarea, .settings-scroll select { padding: 12px 13px; font-size: 15px; }
   .panel-actions { flex-wrap: wrap; }
-  .prompt-item { align-items: start; flex-direction: column; }
-  .prompt-item > div:last-child { display: flex; gap: 8px; width: 100%; }
 
-  .fim-panel {
-    position: fixed;
-    inset: calc(62px + env(safe-area-inset-top)) 0 0 0;
-    z-index: 50;
-    overflow: auto;
-    padding: 14px;
-    background: color-mix(in srgb, var(--panel-solid) 92%, transparent);
-  }
   .panel-card { border-radius: 20px; padding: 16px; box-shadow: none; }
   .section-title { margin-bottom: 16px; }
   .section-title strong { font-size: 18px; }
   .section-title p { font-size: 12px; }
-  .fim-grid { grid-template-columns: 1fr; gap: 13px; }
-  .fim-grid textarea { min-height: 116px; font-size: 13px; }
 
   .toast-stack { left: 14px; right: 14px; bottom: calc(144px + env(safe-area-inset-bottom)); max-width: none; }
   .toast { border-radius: 16px; padding: 13px 15px; font-size: 13px; }

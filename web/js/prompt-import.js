@@ -100,23 +100,6 @@ export function parseExternalPresetText(raw, { sourceName = '' } = {}) {
   };
 }
 
-export function normalizePromptLibraryImport(data, { uid, nowISO } = {}) {
-  const source = Array.isArray(data) ? data : (Array.isArray(data?.promptLibrary) ? data.promptLibrary : []);
-  return source
-    .map((p) => {
-      const promptText = typeof p === 'string' ? p : (p.prompt || p.systemPrompt || p.system_prompt || p.content || '');
-      if (!String(promptText).trim()) return null;
-      return {
-        id: p.id || uid?.('prompt') || `prompt_${Date.now()}`,
-        name: p.name || p.title || 'Imported Prompt',
-        prompt: String(promptText),
-        tags: Array.isArray(p.tags) ? p.tags : [],
-        createdAt: p.createdAt || nowISO?.() || new Date().toISOString(),
-      };
-    })
-    .filter(Boolean);
-}
-
 export function compilePromptPreset(preset, options = {}) {
   const compiled = compileSillyTavernPreset(preset, {
     generationType: options.generationType || 'normal',

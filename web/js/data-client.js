@@ -1,7 +1,7 @@
 import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT } from './config.js';
 import { nowISO, uid, structuredCloneSafe } from './utils.js';
 
-const RESOURCE_KINDS = ['promptTemplate', 'jailbreakPreset', 'characterCard', 'worldBook', 'regexScript', 'reasoningTemplate'];
+const RESOURCE_KINDS = ['jailbreakPreset', 'characterCard', 'worldBook', 'regexScript', 'reasoningTemplate'];
 
 const GLOBAL_SETTING_PATHS = {
   'api.apiKey': ['apiKey'],
@@ -22,7 +22,6 @@ const GLOBAL_SETTING_PATHS = {
   'output.jsonMode': ['jsonMode'],
   'output.prefixEnabled': ['prefixEnabled'],
   'output.assistantPrefix': ['assistantPrefix'],
-  'output.fimEnabled': ['fimEnabled'],
   'tools.enabled': ['toolsEnabled'],
   'tools.json': ['toolsJson'],
   'formatting.chatDisplayMode': ['formatting', 'chatDisplayMode'],
@@ -74,7 +73,6 @@ const SESSION_SETTING_PATHS = {
 };
 
 const RESOURCE_TO_STATE = {
-  promptTemplate: ['promptLibrary'],
   jailbreakPreset: ['jailbreakPresets'],
   characterCard: ['characterCards'],
   worldBook: ['worldBooks'],
@@ -220,7 +218,6 @@ function conversationSettingsFromSession(session = {}) {
 
 function resourcesFromSnapshot(snapshot = {}) {
   return {
-    promptTemplate: clone(snapshot.promptLibrary || []),
     jailbreakPreset: clone(snapshot.jailbreakPresets || []),
     characterCard: clone(snapshot.characterCards || []),
     worldBook: clone(snapshot.worldBooks || []),
@@ -235,7 +232,6 @@ function stateFromBootstrap(bootstrap = {}) {
     sessions: Array.isArray(bootstrap.conversations) ? bootstrap.conversations.map(defaultSessionFromMeta) : [],
     activeSessionId: bootstrap.activeSessionId || null,
     settings: appSettingsFromFlat(bootstrap.settings || {}, resources),
-    promptLibrary: clone(resources.promptTemplate || []),
     jailbreakPresets: clone(resources.jailbreakPreset || []),
     characterCards: clone(resources.characterCard || []),
     worldBooks: clone(resources.worldBook || []),
@@ -251,7 +247,6 @@ function stateFromLegacySnapshot(snapshot = {}) {
     sessions: clone(data.sessions || []),
     activeSessionId: data.activeSessionId || data.sessions?.[0]?.id || null,
     settings: clone(data.settings || DEFAULT_SETTINGS),
-    promptLibrary: clone(data.promptLibrary || []),
     jailbreakPresets: clone(data.jailbreakPresets || []),
     characterCards: clone(data.characterCards || []),
     worldBooks: clone(data.worldBooks || []),

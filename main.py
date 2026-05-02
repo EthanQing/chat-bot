@@ -42,7 +42,6 @@ SERVER_API_KEY = (os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("CHATBOT_
 MAX_PROXY_BODY_BYTES = int(os.environ.get("CHATBOT_MAX_PROXY_BODY_BYTES", str(10 * 1024 * 1024)))
 
 RESOURCE_KINDS = (
-    "promptTemplate",
     "jailbreakPreset",
     "characterCard",
     "worldBook",
@@ -69,7 +68,6 @@ GLOBAL_SETTING_PATHS: dict[str, tuple[str, ...]] = {
     "output.jsonMode": ("jsonMode",),
     "output.prefixEnabled": ("prefixEnabled",),
     "output.assistantPrefix": ("assistantPrefix",),
-    "output.fimEnabled": ("fimEnabled",),
     "tools.enabled": ("toolsEnabled",),
     "tools.json": ("toolsJson",),
     "formatting.chatDisplayMode": ("formatting", "chatDisplayMode"),
@@ -425,7 +423,6 @@ def import_state_snapshot(conn: sqlite3.Connection, snapshot: dict[str, Any]) ->
 
     formatting = settings.get("formatting") if isinstance(settings.get("formatting"), dict) else {}
     resource_sources = [
-        ("promptTemplate", data.get("promptLibrary")),
         ("jailbreakPreset", data.get("jailbreakPresets")),
         ("characterCard", data.get("characterCards")),
         ("worldBook", data.get("worldBooks")),

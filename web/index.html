@@ -81,32 +81,11 @@
           </div>
         </header>
 
-        <section class="fim-panel hidden" id="fimPanel" aria-label="FIM 补全面板">
-          <div class="panel-card">
-            <div class="section-title">
-              <div>
-                <strong>Fill-In-the-Middle 补全</strong>
-                <p>仅非思考模式可用；提供前缀和后缀，让模型补全中间内容。</p>
-              </div>
-              <button class="ghost small" id="closeFimBtn">关闭</button>
-            </div>
-            <div class="fim-grid">
-              <label>Prefix<textarea id="fimPrefix" rows="7" placeholder="输入前缀…"></textarea></label>
-              <label>Completion<textarea id="fimResult" rows="7" readonly placeholder="补全结果会显示在这里"></textarea></label>
-              <label>Suffix<textarea id="fimSuffix" rows="7" placeholder="输入后缀…"></textarea></label>
-            </div>
-            <div class="panel-actions">
-              <button class="primary" id="runFimBtn">运行 FIM</button>
-              <button class="ghost" id="copyFimBtn">复制结果</button>
-            </div>
-          </div>
-        </section>
-
         <section class="messages" id="messages" aria-live="polite" aria-label="消息区域">
           <div class="empty-state" id="emptyState">
             <div class="empty-state__orb">✦</div>
             <h1>流式 DeepSeek 对话机器人</h1>
-            <p>支持思考模式、Tool Calls、JSON Output、Prefix/FIM、Markdown、代码高亮、数学公式和 Mermaid。</p>
+            <p>支持思考模式、Tool Calls、JSON Output、Prefix、Markdown、代码高亮、数学公式和 Mermaid。</p>
             <div class="starter-grid" id="starterGrid">
               <button data-starter="帮我用三点总结一下 DeepSeek API 的流式调用流程。">总结流式调用</button>
               <button data-starter="写一个 Python 快速排序，并解释时间复杂度。">生成代码示例</button>
@@ -124,10 +103,6 @@
             <textarea id="assistantPrefix" rows="2" placeholder="例如：```python\n"></textarea>
           </div>
           <div class="composer" id="composer">
-            <div class="composer__tools">
-              <button class="icon-btn" id="openFimBtn" title="FIM 补全" aria-label="FIM 补全">FIM</button>
-              <button class="icon-btn" id="promptLibraryBtn" title="Prompt 库" aria-label="Prompt 库">⌘</button>
-            </div>
             <textarea id="messageInput" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行…" autocomplete="off"></textarea>
             <button class="send-btn" id="sendBtn" disabled>发送</button>
           </div>
@@ -305,7 +280,6 @@
             <label>Reasoning effort<select id="reasoningEffortInput"><option value="high">high（默认）</option><option value="max">max</option></select></label>
             <label class="toggle-row"><input id="jsonModeInput" type="checkbox" /> JSON Output 模式</label>
             <label class="toggle-row"><input id="prefixEnabledInput" type="checkbox" /> Chat Prefix Completion（Beta）</label>
-            <label class="toggle-row"><input id="fimEnabledInput" type="checkbox" /> 显示 FIM 面板（Beta）</label>
             <div class="formatting-console">
               <div class="formatting-console__header">
                 <div>
@@ -415,14 +389,7 @@
           <details open data-settings-page="prompt">
             <summary>System Prompt</summary>
             <label>当前会话 System Prompt<textarea id="systemPromptInput" rows="6"></textarea></label>
-            <div class="template-row" id="promptTemplates"></div>
-            <div class="panel-actions">
-              <button class="ghost small" id="savePromptBtn">保存到 Prompt 库</button>
-              <button class="ghost small" id="exportPromptBtn">导出 Prompt</button>
-              <label class="ghost small import-label">导入 JSON 设为 System Prompt<input id="importPromptInput" type="file" accept="application/json,.json" /></label>
-            </div>
-            <p class="muted">这里用于维护基础 System Prompt。下载的破限词/酒馆预设建议到“破限/预设”页导入，避免覆盖基础 System Prompt；若导入的是 Prompt 模板数组，则加入 Prompt 库。</p>
-            <div id="promptLibrary" class="prompt-library"></div>
+            <p class="muted">这里用于维护基础 System Prompt。下载的破限词/酒馆预设建议到“破限/预设”页导入，避免覆盖基础 System Prompt。</p>
           </details>
 
           <details open data-settings-page="preset">
