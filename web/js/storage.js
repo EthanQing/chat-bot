@@ -4,6 +4,9 @@ const STORE_NAME = 'kv';
 const APP_STATE_KEY = 'app-state';
 const META_SUFFIX = '.storage-meta';
 const LOCAL_STORAGE_SOFT_LIMIT = 4_500_000;
+const SERVER_META_TIMEOUT_MS = 12_000;
+const SERVER_STATE_TIMEOUT_MS = 60_000;
+const SERVER_SAVE_TIMEOUT_MS = 60_000;
 
 let dbPromise = null;
 let lastServerUpdatedAt = null;
@@ -11,19 +14,29 @@ let lastServerRevision = null;
 
 export async function loadPersistedState(legacyStorageKey) {
   const local = await loadLocalPersistedState(legacyStorageKey);
-  const serverMeta = await loadServerStateMeta().catch(() => null);
+  let serverMeta = null;
+  let serverMetaError = null;
+  try {
+    serverMeta = await loadServerStateMeta();
+  } catch (error) {
+    serverMetaError = error;
+  }
 
   if (local.data) {
     lastServerUpdatedAt = local.serverUpdatedAt || null;
     lastServerRevision = Number.isFinite(local.serverRevision) ? local.serverRevision : null;
 
-    if (serverMeta?.exists) {
+    if (serverMeta?.exists || serverMetaError) {
       return {
         data: local.data,
         backend: `${local.backend}-local-first`,
         updatedAt: lastServerUpdatedAt,
         revision: lastServerRevision,
+        serverUpdatedAt: serverMeta?.updatedAt || null,
+        serverRevision: Number.isFinite(serverMeta?.revision) ? serverMeta.revision : 0,
+        serverBytes: Number.isFinite(serverMeta?.bytes) ? serverMeta.bytes : 0,
         serverMayHaveUpdates: true,
+        serverCheckError: serverMetaError?.message || '',
       };
     }
 
@@ -62,6 +75,10 @@ export async function savePersistedState(legacyStorageKey, data, { force = false
     return 'server-file';
   }
   return saveLocalPersistedState(legacyStorageKey, data);
+}
+
+export async function saveLocalPersistedStateOnly(legacyStorageKey, data, { backendLabel = 'local-cache-pending-server', serverMeta = null } = {}) {
+  return saveLocalPersistedState(legacyStorageKey, data, backendLabel, serverMeta);
 }
 
 export async function peekServerStateMeta() {
@@ -214,34 +231,34 @@ function writeStorageMeta(legacyStorageKey, backend, size = undefined, serverMet
 }
 
 async function loadServerStateMeta() {
-  const response = await fetch('/api/state/meta', {
+  const response = await fetchWithTimeout('/api/state/meta', {
     method: 'GET',
     headers: { Accept: 'application/json' },
     cache: 'no-store',
     credentials: 'same-origin',
-  });
+  }, SERVER_META_TIMEOUT_MS, '共享状态元数据请求超时');
   if (!response.ok) throw new Error(`Server state metadata load failed: HTTP ${response.status}`);
   return response.json();
 }
 
 async function loadServerState() {
-  const response = await fetch('/api/state', {
+  const response = await fetchWithTimeout('/api/state', {
     method: 'GET',
     headers: { Accept: 'application/json' },
     cache: 'no-store',
     credentials: 'same-origin',
-  });
+  }, SERVER_STATE_TIMEOUT_MS, '共享状态下载超时');
   if (!response.ok) throw new Error(`Server state load failed: HTTP ${response.status}`);
   return response.json();
 }
 
 async function saveServerState(data, { force = false } = {}) {
-  const response = await fetch('/api/state', {
+  const response = await fetchWithTimeout('/api/state', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ data, baseRevision: lastServerRevision, force }),
     credentials: 'same-origin',
-  });
+  }, SERVER_SAVE_TIMEOUT_MS, '共享状态上传超时');
   if (!response.ok) {
     let payload = null;
     try { payload = await response.json(); } catch (_) {}
@@ -253,6 +270,17 @@ async function saveServerState(data, { force = false } = {}) {
     throw error;
   }
   return response.json();
+}
+
+function fetchWithTimeout(url, options, timeoutMs, timeoutMessage) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .catch((error) => {
+      if (error?.name === 'AbortError') throw new Error(timeoutMessage || '请求超时');
+      throw error;
+    })
+    .finally(() => clearTimeout(timer));
 }
 
 function shouldPreferLocalOverServer(localData, serverData) {

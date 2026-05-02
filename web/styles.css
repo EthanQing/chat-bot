@@ -331,7 +331,7 @@ details:focus-within { border-color: color-mix(in srgb, var(--accent) 42%, trans
 summary { font-weight: 950; padding: 17px 22px; font-size: 16px; cursor: pointer; color: var(--text); background: var(--panel-solid); border-bottom: 1px solid transparent; }
 details[open] summary { border-bottom-color: var(--border); }
 summary::-webkit-details-marker { display: none; }
-details > label, details > .muted, details > .panel-actions, details > .template-row, details > .prompt-library, details > .model-note, details > .token-panel { margin: 0 22px 19px; }
+details > label, details > .muted, details > .panel-actions, details > .template-row, details > .prompt-library, details > .model-note, details > .token-panel, details > .sync-status { margin: 0 22px 19px; }
 .settings-scroll label { display: grid; gap: 9px; color: var(--text); font-size: 14px; font-weight: 850; }
 .settings-scroll input:not([type="checkbox"]), .settings-scroll textarea, .settings-scroll select { width: 100%; padding: 13px 15px; color: var(--text); font-size: 15px; font-weight: 650; }
 .toggle-row { display: flex !important; grid-template-columns: auto 1fr; align-items: center; gap: 13px !important; cursor: pointer; padding: 5px 0; }
@@ -339,7 +339,13 @@ details > label, details > .muted, details > .panel-actions, details > .template
 .toggle-row input[type="checkbox"]::after { content: ""; position: absolute; top: 4px; left: 4px; width: 20px; height: 20px; background: var(--panel-solid); border-radius: 50%; transition: transform 200ms cubic-bezier(.2,.8,.2,1); box-shadow: 0 3px 8px rgba(0,0,0,0.25); }
 .toggle-row input[type="checkbox"]:checked { background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: inset 0 1px 4px rgba(0,0,0,0.18), 0 8px 18px var(--accent-soft); }
 .toggle-row input[type="checkbox"]:checked::after { transform: translateX(22px); }
-.model-note, .token-panel { padding: 15px; border: 1px solid var(--border-strong); border-radius: 16px; background: var(--panel-solid); color: var(--text); font-size: 14px; line-height: 1.7; font-weight: 650; box-shadow: var(--shadow-soft); }
+.model-note, .token-panel, .sync-status { padding: 15px; border: 1px solid var(--border-strong); border-radius: 16px; background: var(--panel-solid); color: var(--text); font-size: 14px; line-height: 1.7; font-weight: 650; box-shadow: var(--shadow-soft); }
+.sync-status { position: relative; display: flex; align-items: center; gap: 10px; }
+.sync-status::before { content: ""; width: 10px; height: 10px; border-radius: 999px; background: var(--muted-2); box-shadow: 0 0 0 4px color-mix(in srgb, var(--muted-2) 14%, transparent); flex: 0 0 auto; }
+.sync-status--syncing::before, .sync-status--pending::before { background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); animation: quietPulse 1.4s ease-in-out infinite; }
+.sync-status--ok::before { background: #10a36f; box-shadow: 0 0 0 4px rgba(16, 163, 111, 0.16); }
+.sync-status--retry::before, .sync-status--warning::before { background: var(--warning); box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 18%, transparent); }
+.sync-status--error::before, .sync-status--offline::before { background: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
 .panel-actions { display: flex; gap: 11px; align-items: center; }
 .panel-actions.wrap { flex-wrap: wrap; }
 .template-row { display: flex; flex-wrap: wrap; gap: 10px; }

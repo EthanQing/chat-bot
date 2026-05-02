@@ -253,7 +253,7 @@
   .settings-scroll { padding: 16px; }
   details { border-radius: 18px; margin-bottom: 14px; }
   summary { padding: 15px 17px; font-size: 15px; }
-  details > label, details > .muted, details > .panel-actions, details > .template-row, details > .prompt-library, details > .model-note, details > .token-panel { margin: 0 17px 16px; }
+  details > label, details > .muted, details > .panel-actions, details > .template-row, details > .prompt-library, details > .model-note, details > .token-panel, details > .sync-status { margin: 0 17px 16px; }
   .settings-scroll input:not([type="checkbox"]), .settings-scroll textarea, .settings-scroll select { padding: 12px 13px; font-size: 15px; }
   .panel-actions { flex-wrap: wrap; }
   .prompt-item { align-items: start; flex-direction: column; }

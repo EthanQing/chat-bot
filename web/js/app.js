@@ -56,6 +56,7 @@ import {
 } from './tool-runtime.js';
 import {
   loadPersistedState,
+  saveLocalPersistedStateOnly,
   savePersistedState,
   peekServerStateMeta,
   peekServerPersistedState,
@@ -111,6 +112,11 @@ import {
   };
 
   const els = {};
+  const SHARED_SYNC_INTERVAL_MS = 5000;
+  const SHARED_SYNC_RETRY_BASE_MS = 1000;
+  const SHARED_SYNC_RETRY_MAX_MS = 30_000;
+  const SYNC_ROLLBACK_GRACE_MS = 1500;
+
   let saveTimer = 0;
   let renderTimer = 0;
   let abortController = null;
@@ -120,6 +126,9 @@ import {
   let storageBackend = 'memory';
   let sharedSyncTimer = 0;
   let sharedSyncInFlight = false;
+  let sharedSyncRetryTimer = 0;
+  let sharedSyncRetryDelay = 0;
+  let startupServerSyncPending = false;
   let hasUnsavedChanges = false;
   let lastPersistedSnapshot = null;
   let saveConflictDeferred = false;
@@ -147,7 +156,14 @@ import {
     applyServerApiKeyMode();
     ensureSession();
     lastPersistedSnapshot = buildPersistedStateSnapshot();
-    if (hasUnsavedChanges) persistSoon();
+    if (hasUnsavedChanges) {
+      if (startupServerSyncPending) {
+        syncLog('startup_persist_deferred', { reason: 'waiting_for_server_reconcile' });
+        updateSharedSyncStatus('pending', '正在校验共享文件；本机缓存暂不上传。');
+      } else {
+        persistSoon();
+      }
+    }
     applyResponsiveUiDefaults();
     applyTheme();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
@@ -163,6 +179,15 @@ import {
     });
     window.addEventListener('resize', applyResponsiveUiDefaults);
     window.addEventListener('focus', () => syncFromServerIfChanged({ reason: 'focus' }));
+    window.addEventListener('online', () => {
+      syncLog('network_online');
+      updateSharedSyncStatus('pending', '网络已恢复，准备继续同步…');
+      syncFromServerIfChanged({ reason: 'network_online' });
+    });
+    window.addEventListener('offline', () => {
+      syncLog('network_offline');
+      updateSharedSyncStatus('offline', '网络已断开，已加载的数据会保留。');
+    });
     window.addEventListener('beforeunload', () => {
       persistNow();
     });
@@ -170,7 +195,15 @@ import {
     renderAll();
     autoResizeInput();
     startSharedStateSync();
-    setTimeout(() => syncFromServerIfChanged({ reason: 'startup' }), 50);
+    setTimeout(() => {
+      syncFromServerIfChanged({
+        force: startupServerSyncPending,
+        silent: true,
+        reason: 'startup',
+        allowUnsaved: startupServerSyncPending,
+        protectLocal: startupServerSyncPending,
+      });
+    }, 50);
   }
 
   function bindElements() {
@@ -190,7 +223,7 @@ import {
       'characterLibrarySearch', 'characterLibrarySelect', 'applyCharacterCardBtn', 'saveCharacterCardBtn', 'syncCharacterCardBtn', 'deleteCharacterCardBtn', 'exportCharacterCardBtn', 'userNameInput', 'userPersonaInput', 'rpModeInput', 'rpPerspectiveInput', 'rpSuggestionsInput', 'rpMemoryInput', 'backgroundEnabledInput', 'backgroundInput', 'characterEnabledInput', 'characterCardInput', 'startCharacterChatBtn', 'insertGreetingBtn', 'clearCharacterBtn',
       'characterCardSummary', 'characterGreetingSelect', 'characterNameInput', 'characterDescriptionInput', 'characterPersonalityInput', 'characterScenarioInput', 'characterFirstMesInput', 'characterMesExampleInput', 'characterSystemPromptInput', 'characterPostHistoryInput', 'characterCreatorNotesInput', 'characterCardPreview', 'characterBackgroundDetails', 'toolsEnabledInput', 'toolsJsonInput', 'formatToolsBtn', 'themeInput', 'fontScaleInput', 'fontScaleValue', 'timestampsInput',
       'worldBookLibrarySearch', 'worldBookLibrarySelect', 'activeWorldBookSelect', 'applyWorldBookFromLibraryBtn', 'saveWorldBookBtn', 'newWorldBookBtn', 'deleteWorldBookBtn', 'exportWorldBookBtn', 'worldBookEnabledInput', 'worldBookImportInput', 'clearWorldBookBtn', 'worldBookScanDepthInput', 'worldBookMaxEntriesInput', 'worldBookTokenBudgetInput', 'worldBookRecursiveInput', 'worldBookSummary', 'worldBookEditor', 'applyWorldBookEditBtn', 'worldBookActivePreview', 'worldBookTestInput', 'worldBookTestResult',
-      'lineNumbersInput', 'tokenPanel', 'syncServerBtn', 'pushServerBtn', 'clearHistoryBtn', 'truncateHistoryBtn', 'exportJsonBtn', 'exportMarkdownBtn', 'exportTxtBtn', 'fimPanel',
+      'lineNumbersInput', 'tokenPanel', 'syncStatus', 'syncServerBtn', 'pushServerBtn', 'clearHistoryBtn', 'truncateHistoryBtn', 'exportJsonBtn', 'exportMarkdownBtn', 'exportTxtBtn', 'fimPanel',
       'closeFimBtn', 'fimPrefix', 'fimResult', 'fimSuffix', 'runFimBtn', 'copyFimBtn', 'shortcutDialog', 'toastStack',
     ]) {
       els[id] = $(id);
@@ -221,8 +254,21 @@ import {
 
   async function loadState() {
     try {
-      const { data: parsed, backend } = await loadPersistedState(STORAGE_KEY);
+      const loaded = await loadPersistedState(STORAGE_KEY);
+      const { data: parsed, backend } = loaded;
       storageBackend = backend;
+      startupServerSyncPending = Boolean(loaded?.serverMayHaveUpdates);
+      if (startupServerSyncPending) {
+        syncLog('startup_local_first', {
+          local_revision: loaded?.revision ?? null,
+          server_revision: loaded?.serverRevision ?? null,
+          server_bytes: loaded?.serverBytes ?? null,
+          server_check_error: loaded?.serverCheckError || '',
+        });
+        updateSharedSyncStatus('pending', loaded?.serverCheckError
+          ? '已先显示本机缓存；共享文件检查失败，正在重试…'
+          : '已先显示本机缓存，正在后台校验共享文件…');
+      }
       if (!parsed) return;
       applyPersistedState(parsed);
       restoreLocalActiveSession();
@@ -680,6 +726,13 @@ import {
       saveTimer = 0;
       return;
     }
+    if (startupServerSyncPending) {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(persistNow, SAVE_DELAY);
+      syncLog('persist_deferred_startup_sync', { seq: stateChangeSeq });
+      updateSharedSyncStatus('pending', '正在校验共享文件；本机改动先保存到浏览器缓存，暂不上传。');
+      return;
+    }
     clearTimeout(saveTimer);
     saveTimer = setTimeout(persistNow, SAVE_DELAY);
   }
@@ -689,6 +742,26 @@ import {
     saveTimer = 0;
     if (generating && !force) {
       hasUnsavedChanges = true;
+      return;
+    }
+    if (startupServerSyncPending && !force) {
+      const serializable = buildPersistedStateSnapshot();
+      try {
+        storageBackend = await saveLocalPersistedStateOnly(STORAGE_KEY, serializable, {
+          serverMeta: {
+            updatedAt: getLastServerUpdatedAt(),
+            revision: getLastServerRevision(),
+          },
+        });
+        hasUnsavedChanges = true;
+        syncLog('persist_local_only_startup_sync', { backend: storageBackend, revision: getLastServerRevision() });
+        updateSharedSyncStatus('pending', '正在校验共享文件；本机改动已先保存到浏览器缓存，暂不上传。');
+        renderStats();
+      } catch (error) {
+        console.warn('Failed to save local pending state', error);
+        syncLog('persist_local_only_failed', { error: error.message });
+        toast('本地缓存保存失败：浏览器可能阻止了 IndexedDB/localStorage。', 'error');
+      }
       return;
     }
     if (saveInFlight && !force) {
@@ -741,6 +814,9 @@ import {
     } else {
       hasUnsavedChanges = true;
     }
+    sharedSyncRetryDelay = 0;
+    updateSharedSyncStatus('ok', `已保存到共享文件${Number.isFinite(getLastServerRevision()) ? ` · 共享版本 ${getLastServerRevision()}` : ''}`);
+    syncLog('persist_complete', { backend: storageBackend, revision: getLastServerRevision(), force });
     renderStats();
   }
 
@@ -783,46 +859,328 @@ import {
 
   function startSharedStateSync() {
     clearInterval(sharedSyncTimer);
+    clearTimeout(sharedSyncRetryTimer);
+    sharedSyncRetryTimer = 0;
     sharedSyncTimer = setInterval(() => {
       syncFromServerIfChanged({ reason: 'timer' });
-    }, 5000);
+    }, SHARED_SYNC_INTERVAL_MS);
   }
 
-  async function syncFromServerIfChanged({ force = false, silent = true, reason = 'manual' } = {}) {
+  async function syncFromServerIfChanged({ force = false, silent = true, reason = 'manual', allowUnsaved = false, protectLocal = !force } = {}) {
     if (sharedSyncInFlight || generating) return false;
     if (!force && saveInFlight) return false;
-    if (!force && hasUnsavedChanges) return false;
+    if (!force && hasUnsavedChanges && !allowUnsaved) return false;
     if (!force && isUserEditing()) return false;
     sharedSyncInFlight = true;
+    let startupSyncResolved = false;
+    clearTimeout(sharedSyncRetryTimer);
+    sharedSyncRetryTimer = 0;
+    updateSharedSyncStatus('syncing', force ? '正在完整校验共享文件…' : '正在检查共享文件更新…');
+    syncLog('sync_start', {
+      reason,
+      force,
+      allow_unsaved: allowUnsaved,
+      protect_local: protectLocal,
+      from_revision: getLastServerRevision(),
+      unsaved: hasUnsavedChanges,
+    });
     try {
       const before = getLastServerUpdatedAt();
       const beforeRevision = getLastServerRevision();
       if (!force) {
         const remoteMeta = await peekServerStateMeta();
-        if (!remoteMeta?.exists) return false;
-        if (!isRemoteNewer(remoteMeta.updatedAt, before, remoteMeta.revision, beforeRevision)) return false;
+        if (!remoteMeta?.exists) {
+          startupSyncResolved = true;
+          sharedSyncRetryDelay = 0;
+          updateSharedSyncStatus('ok', '共享文件尚未创建，本机数据会在下次保存时上传。');
+          syncLog('sync_no_server_state', { reason });
+          return false;
+        }
+        if (!isRemoteNewer(remoteMeta.updatedAt, before, remoteMeta.revision, beforeRevision)) {
+          startupSyncResolved = true;
+          sharedSyncRetryDelay = 0;
+          updateSharedSyncStatus('ok', `已是最新${Number.isFinite(beforeRevision) ? ` · 共享版本 ${beforeRevision}` : ''}`);
+          syncLog('sync_not_modified', { reason, revision: beforeRevision });
+          return false;
+        }
+        syncLog('sync_meta_newer', {
+          reason,
+          remote_revision: remoteMeta.revision,
+          local_revision: beforeRevision,
+          bytes: remoteMeta.bytes,
+        });
       }
       const remote = await peekServerPersistedState();
-      if (!remote?.data) return false;
-      if (!force && !isRemoteNewer(remote.updatedAt, before, remote.revision, beforeRevision)) return false;
-      applyPersistedState(remote.data, { preserveActiveSession: true });
-      const cleanedDuringApply = hasUnsavedChanges;
+      if (!remote?.data) {
+        startupSyncResolved = true;
+        sharedSyncRetryDelay = 0;
+        updateSharedSyncStatus('ok', '共享文件为空，本机数据会在下次保存时上传。');
+        syncLog('sync_empty_server_state', { reason });
+        return false;
+      }
+      if (!force && !isRemoteNewer(remote.updatedAt, before, remote.revision, beforeRevision)) {
+        startupSyncResolved = true;
+        sharedSyncRetryDelay = 0;
+        updateSharedSyncStatus('ok', `已是最新${Number.isFinite(beforeRevision) ? ` · 共享版本 ${beforeRevision}` : ''}`);
+        syncLog('sync_not_modified_after_fetch', { reason, revision: beforeRevision });
+        return false;
+      }
+
+      const reconciliation = reconcileRemoteState(remote.data, {
+        force,
+        allowUnsaved,
+        protectLocal,
+        reason,
+      });
+      hasUnsavedChanges = false;
+      applyPersistedState(reconciliation.data, { preserveActiveSession: true });
+      const changedDuringApply = hasUnsavedChanges;
       markServerStateApplied(remote.updatedAt);
       markServerRevisionApplied(remote.revision);
       storageBackend = remote.backend || 'server-file';
-      hasUnsavedChanges = cleanedDuringApply;
+      hasUnsavedChanges = Boolean(reconciliation.needsPersist || changedDuringApply);
       ensureSession();
       lastPersistedSnapshot = buildPersistedStateSnapshot();
       syncSettingsToInputs();
       renderAll();
-      if (cleanedDuringApply) persistSoon();
+      sharedSyncRetryDelay = 0;
+      startupServerSyncPending = false;
+      startupSyncResolved = true;
+      if (hasUnsavedChanges) persistSoon();
+      updateSharedSyncStatus(
+        reconciliation.rollbackPrevented ? 'warning' : 'ok',
+        reconciliation.rollbackPrevented
+          ? '检测到共享文件疑似旧快照，已保留本机较新的消息并准备回写。'
+          : `同步完成${Number.isFinite(remote.revision) ? ` · 共享版本 ${remote.revision}` : ''}`,
+      );
+      syncLog('sync_complete', {
+        reason,
+        revision: remote.revision,
+        rollback_prevented: reconciliation.rollbackPrevented,
+        needs_persist: reconciliation.needsPersist,
+      });
       if (!silent) toast('已同步服务端最新数据。', 'success');
       return true;
     } catch (error) {
+      syncLog('sync_error', { reason, error: error.message, retry_in: nextRetryDelayPreview() });
+      updateSharedSyncStatus('error', `同步失败：${error.message}`);
+      scheduleSharedSyncRetry(reason);
       if (!silent) toast(`同步失败：${error.message}`, 'error');
       return false;
     } finally {
       sharedSyncInFlight = false;
+      if (startupSyncResolved && startupServerSyncPending) {
+        startupServerSyncPending = false;
+        if (hasUnsavedChanges && !saveTimer) persistSoon();
+      }
+    }
+  }
+
+  function reconcileRemoteState(remoteData, { force = false, allowUnsaved = false, protectLocal = !force, reason = 'manual' } = {}) {
+    const localSnapshot = buildPersistedStateSnapshot();
+    if (protectLocal) {
+      const rollback = detectRemoteRollback(localSnapshot, remoteData);
+      if (rollback.detected) {
+        syncLog('sync_rollback_prevented', { reason, issues: rollback.issues.slice(0, 8) });
+        return {
+          data: mergePersistedStates(null, localSnapshot, remoteData),
+          needsPersist: true,
+          rollbackPrevented: true,
+        };
+      }
+    }
+
+    if (allowUnsaved && hasUnsavedChanges) {
+      syncLog('sync_merge_unsaved_local_changes', { reason });
+      return {
+        data: mergePersistedStates(lastPersistedSnapshot, localSnapshot, remoteData),
+        needsPersist: true,
+        rollbackPrevented: false,
+      };
+    }
+
+    return { data: remoteData, needsPersist: false, rollbackPrevented: false };
+  }
+
+  function detectRemoteRollback(localState = {}, remoteState = {}) {
+    const localSessions = mapSessionsById(localState.sessions);
+    const remoteSessions = mapSessionsById(remoteState.sessions);
+    const issues = [];
+
+    for (const [id, localSession] of localSessions) {
+      const remoteSession = remoteSessions.get(id);
+      const localCount = sessionMessageCount(localSession);
+      if (!remoteSession) {
+        if (localCount > 0) issues.push({ type: 'missing_session', id, local_count: localCount });
+        continue;
+      }
+
+      const remoteCount = sessionMessageCount(remoteSession);
+      const localUpdated = timestampMs(localSession.updatedAt);
+      const remoteUpdated = timestampMs(remoteSession.updatedAt);
+      const remoteSessionNewer = isTimestampAfter(remoteUpdated, localUpdated, SYNC_ROLLBACK_GRACE_MS);
+
+      if (remoteCount < localCount && !remoteSessionNewer) {
+        issues.push({
+          type: 'message_count_regression',
+          id,
+          local_count: localCount,
+          remote_count: remoteCount,
+          local_updated_at: localSession.updatedAt || null,
+          remote_updated_at: remoteSession.updatedAt || null,
+        });
+      }
+
+      const localLatestMessage = latestSessionMessageTime(localSession);
+      const remoteLatestMessage = latestSessionMessageTime(remoteSession);
+      if (
+        localCount > remoteCount
+        && Number.isFinite(localLatestMessage)
+        && (!Number.isFinite(remoteLatestMessage) || remoteLatestMessage + SYNC_ROLLBACK_GRACE_MS < localLatestMessage)
+        && !remoteSessionNewer
+      ) {
+        issues.push({
+          type: 'latest_message_regression',
+          id,
+          local_latest_message_at: new Date(localLatestMessage).toISOString(),
+          remote_latest_message_at: Number.isFinite(remoteLatestMessage) ? new Date(remoteLatestMessage).toISOString() : null,
+        });
+      }
+
+      if (!remoteSessionNewer && hasTruncatedAssistantRegression(localSession, remoteSession)) {
+        issues.push({ type: 'assistant_content_truncated', id });
+      }
+    }
+
+    return { detected: issues.length > 0, issues };
+  }
+
+  function mapSessionsById(sessions = []) {
+    const map = new Map();
+    for (const session of sessions || []) {
+      if (!session || typeof session !== 'object' || !session.id) continue;
+      if (!map.has(session.id)) map.set(session.id, session);
+    }
+    return map;
+  }
+
+  function sessionMessageCount(session = {}) {
+    return Array.isArray(session.messages) ? session.messages.length : 0;
+  }
+
+  function latestSessionMessageTime(session = {}) {
+    let latest = Number.NaN;
+    for (const message of session.messages || []) {
+      const time = timestampMs(message?.createdAt);
+      if (Number.isFinite(time) && (!Number.isFinite(latest) || time > latest)) latest = time;
+    }
+    return latest;
+  }
+
+  function hasTruncatedAssistantRegression(localSession = {}, remoteSession = {}) {
+    const remoteMessages = new Map((remoteSession.messages || []).map((message) => [message?.id, message]));
+    for (const localMessage of localSession.messages || []) {
+      if (localMessage?.role !== 'assistant' || !localMessage.id) continue;
+      const remoteMessage = remoteMessages.get(localMessage.id);
+      if (!remoteMessage || remoteMessage.role !== 'assistant') continue;
+      const localText = assistantComparableText(localMessage);
+      const remoteText = assistantComparableText(remoteMessage);
+      if (looksLikeTruncatedText(remoteText, localText)) return true;
+    }
+    return false;
+  }
+
+  function assistantComparableText(message = {}) {
+    const active = Array.isArray(message.versions) && message.versions.length
+      ? message.versions[message.activeVersion || 0] || message.versions.at(-1)
+      : null;
+    return String(active?.content || message.content || '');
+  }
+
+  function looksLikeTruncatedText(shortText, longText) {
+    const short = String(shortText || '').trim();
+    const long = String(longText || '').trim();
+    if (!short || !long || long.length <= short.length + 80) return false;
+    if (long.startsWith(short)) return true;
+    const prefix = commonPrefixLength(short, long);
+    const requiredPrefix = short.length > 40 ? Math.min(short.length * 0.92, short.length - 20) : short.length;
+    return prefix >= requiredPrefix;
+  }
+
+  function commonPrefixLength(left, right) {
+    const max = Math.min(left.length, right.length);
+    let index = 0;
+    while (index < max && left[index] === right[index]) index += 1;
+    return index;
+  }
+
+  function isTimestampAfter(left, right, graceMs = 0) {
+    if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+    return left > right + graceMs;
+  }
+
+  function timestampMs(value) {
+    if (!value) return Number.NaN;
+    const time = Date.parse(value);
+    return Number.isFinite(time) ? time : Number.NaN;
+  }
+
+  function scheduleSharedSyncRetry(reason = 'unknown') {
+    if (sharedSyncRetryTimer) return;
+    if (navigator.onLine === false) {
+      updateSharedSyncStatus('offline', '网络已断开，恢复后会继续同步。');
+      return;
+    }
+    const delay = nextRetryDelayPreview();
+    sharedSyncRetryDelay = delay;
+    updateSharedSyncStatus('retry', `同步失败，将在 ${formatRetryDelay(delay)} 后重试。`);
+    sharedSyncRetryTimer = setTimeout(() => {
+      sharedSyncRetryTimer = 0;
+      const retryingStartup = startupServerSyncPending;
+      syncFromServerIfChanged({
+        force: retryingStartup,
+        silent: true,
+        reason: retryingStartup ? 'startup_retry' : `retry:${reason}`,
+        allowUnsaved: retryingStartup,
+        protectLocal: true,
+      });
+    }, delay);
+  }
+
+  function nextRetryDelayPreview() {
+    return sharedSyncRetryDelay ? Math.min(sharedSyncRetryDelay * 2, SHARED_SYNC_RETRY_MAX_MS) : SHARED_SYNC_RETRY_BASE_MS;
+  }
+
+  function formatRetryDelay(ms) {
+    return ms >= 1000 ? `${Math.round(ms / 1000)} 秒` : `${ms}ms`;
+  }
+
+  function updateSharedSyncStatus(status, message) {
+    if (!els.syncStatus) return;
+    const revision = getLastServerRevision();
+    const revisionText = Number.isFinite(revision) && !String(message || '').includes('共享版本') ? ` · 共享版本 ${revision}` : '';
+    els.syncStatus.className = `sync-status sync-status--${status || 'idle'}`;
+    els.syncStatus.textContent = `${message || '同步状态待检查'}${revisionText}`;
+    els.syncStatus.dataset.status = status || 'idle';
+  }
+
+  function syncLog(event, data = {}) {
+    const entry = {
+      timestamp: new Date().toISOString(),
+      event,
+      data,
+      online: navigator.onLine,
+      visibilityState: document.visibilityState,
+    };
+    console.log('[SYNC]', entry);
+    try {
+      const key = `${STORAGE_KEY}.sync-log`;
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      const log = Array.isArray(existing) ? existing : [];
+      log.push(entry);
+      localStorage.setItem(key, JSON.stringify(log.slice(-200)));
+    } catch (_) {
+      // Console logging is enough when localStorage is unavailable.
     }
   }
 
@@ -4158,8 +4516,12 @@ import {
       'server-file': '服务端文件（电脑/手机共享）',
       'server-migrated-from-local': '已从本机浏览器迁移到服务端文件',
       indexeddb: 'IndexedDB（推荐，大容量持久化）',
+      'indexeddb-local-first': 'IndexedDB 本机缓存（后台校验共享文件）',
       'localStorage-migrated': '已从 localStorage 迁移到 IndexedDB',
+      'localStorage-migrated-local-first': 'localStorage 迁移缓存（后台校验共享文件）',
       localStorage: 'localStorage（兜底）',
+      'localStorage-local-first': 'localStorage 本机缓存（后台校验共享文件）',
+      'local-cache-pending-server': '浏览器本机缓存（等待共享文件校验）',
       memory: '内存（浏览器阻止了本地持久化）',
     }[backend] || backend;
   }

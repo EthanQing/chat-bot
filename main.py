@@ -18,6 +18,7 @@ import mimetypes
 import os
 import socket
 import threading
+import time
 from pathlib import Path
 from socketserver import ThreadingMixIn
 from http.server import SimpleHTTPRequestHandler, HTTPServer
@@ -113,20 +114,37 @@ class ChatBotHandler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def _handle_get_state(self) -> None:
+        started = time.monotonic()
         try:
             payload = read_state_file()
             self._send_json(payload)
+            self._log_state_event(
+                "get_state",
+                started,
+                revision=payload.get("revision"),
+                records=count_state_records(payload.get("data")),
+            )
         except Exception as exc:  # pragma: no cover - local safety net
+            self._log_state_event("get_state_error", started, error=str(exc))
             self._send_json({"error": f"Failed to read state: {exc}"}, 500)
 
     def _handle_get_state_meta(self) -> None:
+        started = time.monotonic()
         try:
             payload = read_state_metadata()
             self._send_json(payload)
+            self._log_state_event(
+                "get_state_meta",
+                started,
+                revision=payload.get("revision"),
+                bytes=payload.get("bytes"),
+            )
         except Exception as exc:  # pragma: no cover - local safety net
+            self._log_state_event("get_state_meta_error", started, error=str(exc))
             self._send_json({"error": f"Failed to read state metadata: {exc}"}, 500)
 
     def _handle_save_state(self) -> None:
+        started = time.monotonic()
         try:
             length = int(self.headers.get("Content-Length", "0") or "0")
         except ValueError:
@@ -147,12 +165,29 @@ class ChatBotHandler(SimpleHTTPRequestHandler):
             base_revision = None if force else (payload.get("baseRevision") if isinstance(payload, dict) else None)
             saved = write_state_file(data, expected_revision=base_revision)
             self._send_json(saved)
+            self._log_state_event(
+                "save_state",
+                started,
+                base_revision=base_revision,
+                revision=saved.get("revision"),
+                bytes=length,
+                force=force,
+                records=count_state_records(data),
+            )
         except json.JSONDecodeError as exc:
+            self._log_state_event("save_state_invalid_json", started, bytes=length, error=str(exc))
             self._send_json({"error": f"Invalid JSON: {exc}"}, 400)
         except StateConflictError as exc:
+            self._log_state_event("save_state_conflict", started, revision=exc.current.get("revision"))
             self._send_json({"error": str(exc), "conflict": True, "current": exc.current}, 409)
         except Exception as exc:  # pragma: no cover - local safety net
+            self._log_state_event("save_state_error", started, bytes=length, error=str(exc))
             self._send_json({"error": f"Failed to save state: {exc}"}, 500)
+
+    def _log_state_event(self, event: str, started: float, **fields: object) -> None:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        details = " ".join(f"{key}={value}" for key, value in fields.items() if value is not None)
+        self.log_message("[STATE] %s ip=%s elapsed_ms=%s %s", event, self.client_address[0], elapsed_ms, details)
 
     def _proxy_deepseek(self) -> None:
         length = int(self.headers.get("Content-Length", "0") or "0")
@@ -364,6 +399,19 @@ def write_state_file(data: object, expected_revision: int | None = None) -> dict
             json.dump(payload, file, ensure_ascii=False, separators=(",", ":"))
         os.replace(tmp, STATE_FILE)
     return {"ok": True, "exists": True, "updatedAt": updated_at, "revision": revision}
+
+
+def count_state_records(data: object) -> int:
+    if not isinstance(data, dict):
+        return 0
+    sessions = data.get("sessions")
+    if not isinstance(sessions, list):
+        return 0
+    total = 0
+    for session in sessions:
+        if isinstance(session, dict) and isinstance(session.get("messages"), list):
+            total += len(session["messages"])
+    return total
 
 
 def current_iso_timestamp() -> str:
