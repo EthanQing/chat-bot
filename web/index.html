@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; connect-src 'self' https://api.deepseek.com https://*.deepseek.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.gstatic.com; worker-src 'self' blob:; frame-ancestors 'none';"
+      content="default-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; connect-src 'self' ws: wss: https://api.deepseek.com https://*.deepseek.com; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.gstatic.com; worker-src 'self' blob:; frame-ancestors 'none';"
     />
     <title>DeepSeek 流式对话机器人</title>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" />
@@ -454,10 +454,8 @@
           <details open data-settings-page="data">
             <summary>上下文与数据</summary>
             <div id="tokenPanel" class="token-panel"></div>
-            <div id="syncStatus" class="sync-status sync-status--idle" role="status" aria-live="polite">同步状态待检查</div>
+            <div id="syncStatus" class="sync-status sync-status--idle" role="status" aria-live="polite">SQLite 数据通道待连接</div>
             <div class="panel-actions wrap">
-              <button class="ghost small" id="syncServerBtn">从共享文件拉取</button>
-              <button class="ghost small" id="pushServerBtn">上传本机状态</button>
               <button class="ghost small" id="clearHistoryBtn">清空当前会话消息</button>
               <button class="ghost small" id="truncateHistoryBtn">保留最近 6 轮</button>
               <button class="ghost small" id="exportJsonBtn">导出当前 JSON</button>

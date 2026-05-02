@@ -13,7 +13,7 @@
 https://你的服务器公网IP:12321
 ```
 
-浏览器会提示“证书不受信任”，这是因为没有域名时只能用自签 HTTPS 证书。自签证书可用于临时个人测试，但长期公网使用建议绑定域名并换成正式证书；否则浏览器可能在刷新、后台标签页或长连接恢复时拒绝部分 HTTPS 请求，表现为同步卡住或共享数据短暂回退。
+浏览器会提示“证书不受信任”，这是因为没有域名时只能用自签 HTTPS 证书。自签证书可用于临时个人测试，但长期公网使用建议绑定域名并换成正式证书；否则浏览器可能在刷新、后台标签页或长连接恢复时拒绝部分 HTTPS 请求，表现为同步卡住或 WebSocket 重连失败。
 
 ---
 
@@ -29,10 +29,10 @@ Nginx 监听公网 12321
    │
    │ 反向代理到本机内部端口
    ▼
-Python 服务 127.0.0.1:12322
-   │
+Python FastAPI/Uvicorn 服务 127.0.0.1:12322
+   │  /ws WebSocket 实时数据通道
    ▼
-/opt/chat-bot/data/app-state.json
+/opt/chat-bot/data/chat-bot.sqlite3
 ```
 
 为什么 Python 用 `12322`？
@@ -72,7 +72,7 @@ TCP 12321   浏览器访问
 
 ```bash
 sudo apt update
-sudo apt install -y git python3 nginx apache2-utils openssl
+sudo apt install -y git python3 python3-venv python3-pip nginx apache2-utils openssl
 ```
 
 ---
@@ -100,6 +100,15 @@ git clone <你的仓库地址> .
 
 ```bash
 ls -la /opt/chat-bot/main.py
+```
+
+安装 Python 依赖（推荐使用项目虚拟环境）：
+
+```bash
+cd /opt/chat-bot
+python3 -m venv .venv
+.venv/bin/pip install -U pip
+.venv/bin/pip install -e .
 ```
 
 ---
@@ -144,7 +153,7 @@ After=network.target
 Type=simple
 WorkingDirectory=/opt/chat-bot
 EnvironmentFile=/etc/chat-bot.env
-ExecStart=/usr/bin/python3 /opt/chat-bot/main.py
+ExecStart=/opt/chat-bot/.venv/bin/python /opt/chat-bot/main.py
 Restart=always
 RestartSec=3
 
@@ -174,7 +183,7 @@ curl http://127.0.0.1:12322/api/config
 ```
 
 ```json
-{"serverApiKeyConfigured": true, "maxStateBodyBytes": 83886080}
+{"serverApiKeyConfigured": true, "dataBackend": "sqlite-websocket", "sqliteFile": "/opt/chat-bot/data/chat-bot.sqlite3"}
 ```
 
 如果不正常，看日志：
@@ -245,6 +254,15 @@ server {
     auth_basic "Private Chat Bot";
     auth_basic_user_file /etc/nginx/.chatbot.htpasswd;
 
+    location /ws {
+        proxy_pass http://127.0.0.1:12322;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_read_timeout 3600s;
+    }
+
     location / {
         proxy_pass http://127.0.0.1:12322;
         proxy_http_version 1.1;
@@ -254,7 +272,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # 流式回复/SSE 必须关闭缓冲
+        # DeepSeek 流式回复/SSE 必须关闭缓冲
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 300s;
@@ -360,7 +378,7 @@ sudo systemctl reload nginx
 备份数据：
 
 ```bash
-cp /opt/chat-bot/data/app-state.json /opt/chat-bot/data/app-state.$(date +%F-%H%M%S).json
+cp /opt/chat-bot/data/chat-bot.sqlite3 /opt/chat-bot/data/chat-bot.$(date +%F-%H%M%S).sqlite3
 ```
 
 更新代码：
@@ -377,10 +395,10 @@ sudo systemctl restart chat-bot
 
 这个方案是个人自用方案，不是多用户 SaaS。
 
-它并不是“同一时间只能一个浏览器访问”。你的手机、电脑、平板可以同时打开，但它们会共用同一份：
+它并不是“同一时间只能一个浏览器访问”。你的手机、电脑、平板可以同时打开，并通过 WebSocket 实时同步，但它们会共用同一份：
 
 ```text
-/opt/chat-bot/data/app-state.json
+/opt/chat-bot/data/chat-bot.sqlite3
 ```
 
 所以不要把它给别人当独立账号使用。别人进去会看到你的会话、角色卡、世界书和设置，也可能修改同一份数据。
@@ -396,17 +414,13 @@ sudo systemctl restart chat-bot
 
 如果你以后买了域名，应尽快换成正式域名证书。正式证书能显著降低浏览器拒绝后台 `fetch`、SSE/流式连接或共享状态同步请求的概率。
 
-## 11. 首次加载慢的原因
+## 11. 首次加载与实时同步
 
-聊天记录、角色卡、世界书、破限预设等都会保存在同一个共享状态文件里。历史越多，`app-state.json` 越大。
+当前版本使用 SQLite + WebSocket：
 
-当前版本已经做了以下优化：
+- 打开页面时 bootstrap 只返回设置、资源和会话列表，不会一次性下载所有历史消息。
+- 切换到某个会话时，前端才通过 `conversation.load` 加载该会话消息。
+- 一个标签页修改设置、新增消息或导入资源后，服务端会向其它 WebSocket 连接广播 event。
+- 旧 `app-state.json` 只在首次初始化 SQLite 时迁移一次；迁移后不再读写。
 
-- 打开页面时优先加载浏览器本地 IndexedDB 缓存，页面能更快显示。
-- 后台同步先请求轻量的 `/api/state/meta` 版本信息，只有服务端真的更新了才下载完整状态。
-- 启动时会在后台强制校验一次共享文件，防止旧 IndexedDB/localStorage 快照覆盖服务端较新的聊天记录。
-- 如果检测到共享文件像旧快照（消息数或助手回复长度回退），前端会保留已加载消息并尝试把完整状态回写到共享文件。
-
-但如果你换了新设备、清了浏览器缓存，或者第一次打开这个公网地址，仍然需要完整下载一次服务端状态，这是正常的。
-
-如果以后仍然明显变慢，可以在应用里删除不需要的旧会话，或定期导出备份后清理历史。
+如果 WebSocket 无法连接，优先检查 Nginx 是否配置了 `/ws` 的 `Upgrade`/`Connection` 头，以及自签证书是否被浏览器信任。
